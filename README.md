@@ -53,9 +53,6 @@ evaluation/
              gliner_biomed,clinical_ai_apollo,
              biomedical_ner_all}.py                             one self-contained eval
                                                                  script per model
-  modelsinfo.txt                                                raw run output for all 7
-                                                                 models (backs every P/R/F1
-                                                                 number in this repo)
 
 diagnostics/
   diag_*.py                                                     root-cause scripts for
@@ -64,7 +61,6 @@ diagnostics/
                                                                  DATE fragmentation,
                                                                  AGE/DISEASE annotation-
                                                                  scope gaps, ...)
-  diag.txt                                                      raw diagnostic output
 
 confusion_matrices/
   confusion_matrix_*.png                                        gold-type vs. predicted-

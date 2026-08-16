@@ -28,7 +28,6 @@
 !evaluation/sota_eval_gliner_biomed.py
 !evaluation/sota_eval_clinical_ai_apollo.py
 !evaluation/sota_eval_biomedical_ner_all.py
-!evaluation/modelsinfo.txt
 
 # --- diagnostics/: root-cause scripts for specific findings + raw output ---
 !diagnostics/
@@ -37,7 +36,6 @@
 !diagnostics/diag_d4data_date.py
 !diagnostics/diag_gliner_offsets.py
 !diagnostics/diag_obi_email.py
-!diagnostics/diag.txt
 
 # --- confusion_matrices/: one PNG per in-scope model ---
 !confusion_matrices/
