@@ -4,9 +4,7 @@ Diagnostic: why does obi/deid_roberta_i2b2 get 0/3,204 EXACT EMAIL matches (stri
 actually predicted for them, character-for-character, so the boundary difference is visible
 directly instead of guessed at.
 
-Self-contained for Google Colab -- no local/custom imports.
-    !pip install transformers torch
-Then run this script (or paste it into a cell).
+Dependencies: transformers, torch.
 """
 import json
 import os

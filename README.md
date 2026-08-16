@@ -1,9 +1,9 @@
 # LLM-Prompt-Desensitization-Healthcare
 
 A 30-category healthcare PII/PHI + clinical-entity NER benchmark, and a scored comparison
-of 7 SOTA PII/PHI and biomedical NER models against it. The dataset is the contribution
-here — this repo does not train a model, it measures how well existing models handle
-healthcare text de-identification and clinical entity extraction.
+of 7 SOTA PII/PHI and biomedical NER models against it. The dataset is the contribution —
+this repo does not train a model, it measures how well existing models handle healthcare
+text de-identification and clinical entity extraction.
 
 ## Entity schema (30 types)
 
@@ -19,9 +19,6 @@ scored on the same data.
 
 ## Results
 
-Full writeup, per-model bugs found and fixed, real findings vs. scoring artifacts, and the
-evidence behind every number: **[RESULTS_SUMMARY.md](RESULTS_SUMMARY.md)**.
-
 | model | in-scope types | P | R | F1 |
 |---|---|---|---|---|
 | Microsoft Presidio (threshold=0.4) | 15 | 45.47% | 58.86% | **51.31%** |
@@ -35,56 +32,60 @@ evidence behind every number: **[RESULTS_SUMMARY.md](RESULTS_SUMMARY.md)**.
 "In-scope" P/R/F1 restricts each model's aggregate to only the entity types its own label
 scheme can ever predict — scoring a PII tool against biomedical categories it was never
 built to detect (or vice versa) isn't a fair comparison. STRICT matching (exact type +
-exact span boundary) throughout; see RESULTS_SUMMARY.md for RELAXED and COLLAPSED axes and
-the full per-category confusion matrices.
+exact span boundary) throughout.
+
+Full writeup — per-model bugs found and fixed, real findings vs. scoring artifacts, and the
+evidence behind every number — is in **[RESULTS_SUMMARY.md](RESULTS_SUMMARY.md)**.
 
 ## Repo layout
 
 ```
-build_dataset.py, export_benchmark.py, validate_dataset.py   dataset generation pipeline
-labels.json                                                   the 30-category schema
-benchmark_clinical_phi*.jsonl                                 the benchmark itself (raw
-                                                                text + character-offset
-                                                                gold entity spans)
+dataset/
+  build_dataset.py, export_benchmark.py, validate_dataset.py   generation pipeline
+  labels.json                                                   the 30-category schema
+  benchmark_clinical_phi*.jsonl                                 the benchmark: raw text +
+                                                                 character-offset gold spans
 
-sota_eval_common.py                                            shared scoring/confusion-
-                                                                matrix infrastructure
-sota_eval_{presidio,obi_i2b2,stanford_deid,spacy,
-           gliner_biomed,clinical_ai_apollo,
-           biomedical_ner_all}.py                              one self-contained,
-                                                                Colab-ready eval script
-                                                                per model
+evaluation/
+  sota_eval_common.py                                           shared scoring/confusion-
+                                                                 matrix infrastructure
+  sota_eval_{presidio,obi_i2b2,stanford_deid,spacy,
+             gliner_biomed,clinical_ai_apollo,
+             biomedical_ner_all}.py                             one self-contained eval
+                                                                 script per model
+  modelsinfo.txt                                                raw run output for all 7
+                                                                 models (backs every P/R/F1
+                                                                 number in this repo)
 
-diag_*.py                                                       root-cause diagnostics for
-                                                                real findings (SentencePiece
-                                                                offset bug, DATE
-                                                                fragmentation, AGE/DISEASE
-                                                                annotation-scope gaps, ...)
+diagnostics/
+  diag_*.py                                                     root-cause scripts for
+                                                                 specific findings
+                                                                 (SentencePiece offset bug,
+                                                                 DATE fragmentation,
+                                                                 AGE/DISEASE annotation-
+                                                                 scope gaps, ...)
+  diag.txt                                                      raw diagnostic output
 
-confusion_matrix_*.png                                          gold-type vs. predicted-
-                                                                type confusion matrix per
-                                                                model, full 61,288-record
-                                                                runs, auto-generated
+confusion_matrices/
+  confusion_matrix_*.png                                        gold-type vs. predicted-
+                                                                 type confusion matrix per
+                                                                 model, full 61,288-record
+                                                                 runs
 
-modelsinfo.txt, diag.txt                                        raw console output backing
-                                                                every number and finding in
-                                                                RESULTS_SUMMARY.md
+RESULTS_SUMMARY.md                                              full results, methodology,
+                                                                 bugs found and fixed
 ```
 
 ## Running an evaluation
 
-Each `sota_eval_*.py` script is self-contained (stdlib + the one model's own pip package,
-no local imports) and meant to be run in Google Colab, one model at a time:
+Each script in `evaluation/` is self-contained — standard library plus the one model's own
+pip package, no imports from other files in this repo. Install the dependencies listed at
+the top of the script, set `DATASET_PATH` to point at `dataset/benchmark_clinical_phi.jsonl`,
+and run it. Each run scores the full dataset, prints STRICT/RELAXED/COLLAPSED per-type
+tables and confusion matrices, and writes `confusion_matrix_<model>.png` next to the
+dataset.
 
-```python
-!pip install <model's package>   # see the top of each script
-```
-Then run the script (or paste it into a cell). Set `DATASET_PATH` to wherever
-`benchmark_clinical_phi.jsonl` lives (defaults to a Google Drive path), and it scores the
-full dataset, prints STRICT/RELAXED/COLLAPSED per-type tables plus confusion matrices, and
-writes `confusion_matrix_<model>.png` next to the dataset automatically.
-
-`SOTA_EVAL_MAX_RECORDS` (env var) caps how many records to score, for a quick local test.
+`SOTA_EVAL_MAX_RECORDS` (env var) caps how many records to score, for a quick test run.
 
 ## Known limitations
 

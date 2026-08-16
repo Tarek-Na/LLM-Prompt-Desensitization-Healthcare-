@@ -11,8 +11,7 @@ predicted text, and the start/end character deltas between them. A consistent de
 pattern with predicted text that's a genuinely different (shorter/longer/reworded) span
 points at real model behavior instead.
 
-Self-contained for Colab:
-    !pip install transformers torch
+Dependencies: transformers, torch.
 """
 import json
 import os

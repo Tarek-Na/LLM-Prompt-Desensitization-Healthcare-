@@ -1,15 +1,21 @@
 """
-Score spaCy's general-purpose NER (en_core_web_sm) against benchmark_clinical_phi.jsonl.
+Scores GLiNER-biomed (zero-shot NER, prompted with our schema's label names) against
+benchmark_clinical_phi.jsonl.
 
-Self-contained for Google Colab -- no local/custom imports, only pip-installable packages.
-Run this first in a Colab cell:
-    !pip install spacy
-    !python -m spacy download en_core_web_sm
-Then run this script (or paste it into a cell).
+Unlike every other script here, GLiNER isn't a classifier with a fixed label set -- it's a
+zero-shot span extractor that takes an arbitrary list of label strings at call time
+(`model.predict_entities(text, labels, threshold)`) and returns spans with those exact
+labels attached. That makes it the one model in this benchmark that can be asked about all
+30 schema categories directly, rather than being limited to whatever it was fine-tuned on.
 
-Included as a "generic NLP toolkit NER" baseline alongside the PII-specific tools --
-useful context for how much a dedicated PII/PHI recognizer buys you over a general-purpose
-NER model that was never built for de-identification.
+Two things to get right or this runs painfully slowly:
+  1. GLiNER.from_pretrained() does NOT put the model on GPU by default -- call .to(device)
+     yourself, or a T4 runtime will silently run the whole thing on CPU.
+  2. predict_entities() scores one text per call, so looping it one record at a time never
+     lets the GPU batch anything. Use model.batch_predict_entities(texts, labels, threshold)
+     instead -- this script buffers records into batches before calling it.
+
+Dependencies: gliner.
 """
 import json
 
@@ -23,23 +29,61 @@ except ImportError:
     _HAS_MPL = False
 import os
 import time
-import spacy
+import torch
+from gliner import GLiNER
 
 DATASET_PATH = "/content/drive/MyDrive/Benchmark/benchmark_clinical_phi.jsonl"
 MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)
+BATCH_SIZE = int(os.environ.get("SOTA_EVAL_BATCH_SIZE", "16") or 16)
+# GLiNER's own library default is 0.5. Zero-shot span extraction across 30 simultaneous
+# labels is a harder prompt than the handful GLiNER's own benchmarks typically use, so this
+# is very much worth tuning -- lower it via SOTA_EVAL_SCORE_THRESHOLD if recall looks weak.
+SCORE_THRESHOLD = float(os.environ.get("SOTA_EVAL_SCORE_THRESHOLD", "0.5"))
 
-# spaCy's default entity set covers general text (news/web), not PII/PHI specifically --
-# most of its categories (NORP, PRODUCT, EVENT, WORK_OF_ART, LAW, LANGUAGE, TIME, PERCENT,
-# MONEY, QUANTITY, ORDINAL, CARDINAL) have no equivalent in our schema and are left
-# unmapped (tracked under their native name, still counted as FPs).
-SPACY_TO_SCHEMA = {
-    "PERSON": "NAME",
-    "ORG": "ORGANIZATION",
-    "GPE": "LOCATION",
-    "LOC": "LOCATION",
-    "FAC": "LOCATION",
-    "DATE": "DATE",
+MODEL_NAME = "Ihor/gliner-biomed-base-v1.0"
+
+# Natural-language label prompts -> our schema type. GLiNER was trained on natural-language
+# label phrases (its own README examples use "person", "date", "organization", not
+# ALL_CAPS schema constants), so these are written the way a human would name the category,
+# not copied verbatim from our internal schema names.
+GLINER_LABEL_TO_SCHEMA = {
+    "person name": "NAME", "date": "DATE", "location": "LOCATION", "age": "AGE",
+    "phone number": "PHONE", "fax number": "FAX", "email address": "EMAIL",
+    "social security number": "SSN", "medical record number": "MEDICAL_RECORD_NUMBER",
+    "health plan number": "HEALTH_PLAN_ID", "account number": "ACCOUNT_NUMBER",
+    "license number": "LICENSE_NUMBER", "vehicle identifier": "VEHICLE_ID",
+    "device identifier": "DEVICE_ID", "url": "URL", "ip address": "IP_ADDRESS",
+    "biometric identifier": "BIOMETRIC_ID", "identification number": "OTHER_ID",
+    "profession": "PROFESSION", "organization": "ORGANIZATION",
+    "credit card number": "CREDIT_CARD", "username": "USERNAME",
+    "passport number": "PASSPORT_NUMBER",
+    "cryptocurrency wallet address": "CRYPTO_WALLET", "disease": "DISEASE",
+    "chemical": "CHEMICAL", "gene": "GENE", "cell line": "CELL", "species": "SPECIES",
+    "genetic variant": "VARIANT",
 }
+GLINER_LABELS = list(GLINER_LABEL_TO_SCHEMA.keys())
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Loading {MODEL_NAME}...")
+model = GLiNER.from_pretrained(MODEL_NAME)
+model = model.to(device)
+print(f"Ready. Running on {device}. Prompting with {len(GLINER_LABELS)} labels per batch "
+      f"(batch_size={BATCH_SIZE}).\n")
+
+
+def predict_spans_batch(texts):
+    """Runs one batched forward pass for up to BATCH_SIZE texts at once, instead of one
+    predict_entities() call per record -- see the module docstring for why the unbatched
+    version leaves the GPU almost entirely idle."""
+    batch_ents = model.batch_predict_entities(texts, GLINER_LABELS, threshold=SCORE_THRESHOLD)
+    return [
+        [
+            {"type": GLINER_LABEL_TO_SCHEMA.get(e["label"].lower(), f"GLINER_{e['label']}"),
+             "start": e["start"], "end": e["end"], "text": e["text"]}
+            for e in ents
+        ]
+        for ents in batch_ents
+    ]
 
 
 def iter_records(path):
@@ -68,11 +112,9 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 
 def score_predictions_relaxed(gold_spans, pred_spans):
-    """Same type + any character overlap, not exact boundaries -- a tool that splits an
-    entity into two adjacent pieces still gets credit instead of scoring as two full misses.
-    Precision and recall use separate numerators, each counted once per item; spaCy's
-    doc.ents don't fragment the way some transformer models here do, so this mostly matters
-    for consistency with the sibling scripts rather than changing spaCy's numbers much."""
+    """Precision and recall are tracked with SEPARATE numerators, each counted at most once
+    per item -- see the sibling scripts for why sharing a single tp count between P and R is
+    wrong whenever predictions and gold aren't 1:1."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
     gold_found = [False] * len(gold_spans)
@@ -89,8 +131,8 @@ def score_predictions_relaxed(gold_spans, pred_spans):
     return pred_tp, fp, fn, gold_tp
 
 
-# spaCy's default NER never produces ID/contact categories, so COLLAPSED comes out
-# identical to STRICT here -- expected, not a bug.
+# GLiNER is prompted with the full schema, so unlike the narrow specialist models this
+# grouping is fully applicable here.
 COLLAPSED_GROUPS = {
     "SSN": "IDENTIFIER", "MEDICAL_RECORD_NUMBER": "IDENTIFIER", "HEALTH_PLAN_ID": "IDENTIFIER",
     "ACCOUNT_NUMBER": "IDENTIFIER", "LICENSE_NUMBER": "IDENTIFIER", "VEHICLE_ID": "IDENTIFIER",
@@ -106,9 +148,6 @@ def _collapsed_type(schema_type):
 
 
 def score_predictions_collapsed(gold_spans, pred_spans):
-    """Same collapsed family (see COLLAPSED_GROUPS) + EXACT boundaries. Deliberately keeps
-    boundaries strict here -- this axis forgives category granularity only, not span
-    precision, which relaxed already covers independently."""
     matched_gold = [False] * len(gold_spans)
     tp, fp = [], []
     for p in pred_spans:
@@ -295,7 +334,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 class ScoreAccumulator:
     def __init__(self):
         self.per_type_strict = {}
-        self.per_type_relaxed = {}  # type -> [pred_tp, fp, gold_tp, fn]
+        self.per_type_relaxed = {}
         self.per_type_collapsed = {}
         self.confusion_strict = {}      # (gold_type, pred_type) -> count, exact boundary
         self.confusion_relaxed = {}     # (gold_type, pred_type) -> count, any overlap
@@ -355,9 +394,6 @@ class ScoreAccumulator:
 
     @staticmethod
     def _print_table_relaxed(bucket, title):
-        # P uses pred_tp (matching predictions); R uses gold_tp (unique matched gold
-        # entities). When tp_pred != tp_gold for a type, that gap means the model is
-        # fragmenting/duplicating predictions against the same gold entities.
         print(f"--- {title} ---")
         totals = [0, 0, 0, 0]
         for etype in sorted(bucket):
@@ -394,7 +430,7 @@ class ScoreAccumulator:
                                "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
                                "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
-        print("=== CONFUSION MATRIX JSON (paste back to reconstruct heatmaps) ===")
+        print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,
             "n_records": self.total_records,
@@ -411,31 +447,42 @@ class ScoreAccumulator:
             render_confusion_matrix_png(self, model_name, sorted(set(in_scope_types)), out_path)
 
 
-print("Loading en_core_web_sm...")
-nlp = spacy.load("en_core_web_sm")
-print("Ready.\n")
-
 acc = ScoreAccumulator()
 t0 = time.time()
 n = 0
-for rec in iter_records(DATASET_PATH):
-    if MAX_RECORDS and n >= MAX_RECORDS:
-        break
-    text = rec["text"]
-    gold = rec["entities"]
-    if not text.strip():
-        continue
-    doc = nlp(text)
-    preds = [
-        {"type": SPACY_TO_SCHEMA.get(ent.label_, f"SPACY_{ent.label_}"),
-         "start": ent.start_char, "end": ent.end_char, "text": ent.text}
-        for ent in doc.ents
-    ]
-    acc.add(gold, preds)
-    n += 1
-    if n % 5000 == 0:
+batch = []  # list of (text, gold_spans)
+seen = 0
+
+
+def flush_batch():
+    global n
+    if not batch:
+        return
+    texts = [t for t, _ in batch]
+    pred_lists = predict_spans_batch(texts)
+    for (_, gold), preds in zip(batch, pred_lists):
+        acc.add(gold, preds)
+        n += 1
+    batch.clear()
+    if n % (BATCH_SIZE * 5) < BATCH_SIZE:
         elapsed = time.time() - t0
         print(f"  ...{n} records scored ({n/elapsed:.1f} rec/s, {elapsed/60:.1f} min elapsed)")
 
+
+for rec in iter_records(DATASET_PATH):
+    if MAX_RECORDS and seen >= MAX_RECORDS:
+        break
+    text = rec["text"]
+    gold = rec["entities"]
+    seen += 1
+    if not text.strip():
+        continue
+    batch.append((text, gold))
+    if len(batch) >= BATCH_SIZE:
+        flush_batch()
+flush_batch()
+
 print(f"\nDone: {n} records in {(time.time()-t0)/60:.1f} min.\n")
-acc.report("spaCy en_core_web_sm", in_scope_types=SPACY_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))
+acc.report(f"{MODEL_NAME} (zero-shot, {len(GLINER_LABELS)} labels, threshold={SCORE_THRESHOLD}, "
+           f"batch_size={BATCH_SIZE})",
+           in_scope_types=GLINER_LABEL_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))

@@ -12,8 +12,7 @@ simultaneously, not just 2, and GLiNER's predicted boundaries can plausibly shif
 on what else is in the label set. This version uses the EXACT SAME 30-label list as
 sota_eval_gliner_biomed.py so the comparison is actually apples-to-apples.
 
-Self-contained for Google Colab.
-    !pip install gliner -U
+Dependencies: gliner.
 """
 import json
 import os

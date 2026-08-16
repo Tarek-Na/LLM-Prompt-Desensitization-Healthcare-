@@ -11,6 +11,10 @@ Output format, one JSON object per line:
     {"text": "...", "entities": [{"type": "NAME", "start": 8, "end": 16, "text": "John Doe"}, ...], "source": "synthetic_pii"}
 """
 import json
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "evaluation"))
 from sota_eval_common import detokenize_with_offsets, extract_gold_spans
 
 master_labels = json.load(open("labels.json", encoding="utf-8"))["labels"]

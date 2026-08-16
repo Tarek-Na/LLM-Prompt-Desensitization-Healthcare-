@@ -1,14 +1,8 @@
 """
-Scores d4data/biomedical-ner-all (DistilBERT) against benchmark_clinical_phi.jsonl -- same
-MACCROBAT clinical annotation scheme as Clinical-AI-Apollo/Medical-NER (41 native categories,
-only 4 with a real equivalent here: Age, Date, Disease_disorder, Occupation -- see
-sota_eval_clinical_ai_apollo.py for why).
+Scores Microsoft Presidio against benchmark_clinical_phi.jsonl.
 
-Same task and label taxonomy as Apollo, different backbone (DistilBERT ~66M params vs
-DeBERTa-v2) -- an architecture-controlled comparison on the same benchmark.
-
-Self-contained for Colab:
-    !pip install transformers torch
+Dependencies: presidio-analyzer, presidio-anonymizer, and spaCy's en_core_web_lg model
+(presidio-analyzer's own NER backend for name/location detection).
 """
 import json
 
@@ -22,79 +16,40 @@ except ImportError:
     _HAS_MPL = False
 import os
 import time
-import torch
-from transformers import AutoTokenizer, AutoModelForTokenClassification
+from presidio_analyzer import AnalyzerEngine
 
 DATASET_PATH = "/content/drive/MyDrive/Benchmark/benchmark_clinical_phi.jsonl"
-MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)
+MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)  # 0 = full dataset
+# Without a threshold, analyzer.analyze() returns EVERY regex match regardless of
+# confidence, which floods LICENSE_NUMBER with false positives from Presidio's low-precision
+# US_DRIVER_LICENSE recognizer matching bare digit/alphanumeric IDs (account numbers, MRNs,
+# device IDs) that aren't driver's licenses at all. 0.4 is a common Presidio operating
+# threshold; tune via SOTA_EVAL_SCORE_THRESHOLD (0.0 reproduces unfiltered behavior).
+SCORE_THRESHOLD = float(os.environ.get("SOTA_EVAL_SCORE_THRESHOLD", "0.4"))
 
-MACCROBAT_TO_SCHEMA = {
-    "Age": "AGE", "Date": "DATE", "Disease_disorder": "DISEASE", "Occupation": "PROFESSION",
+# Presidio's own entity vocabulary -> our schema. Anything not listed here (e.g. NRP --
+# nationality/religious/political group, which has no equivalent in our schema) is left
+# unmapped and passed through under its native Presidio name, so the scorer still counts it
+# as a false positive against our ground truth rather than silently discarding it.
+PRESIDIO_TO_SCHEMA = {
+    "PERSON": "NAME",
+    "EMAIL_ADDRESS": "EMAIL",
+    "PHONE_NUMBER": "PHONE",
+    "LOCATION": "LOCATION",
+    "DATE_TIME": "DATE",
+    "CREDIT_CARD": "CREDIT_CARD",
+    "CRYPTO": "CRYPTO_WALLET",
+    "IBAN_CODE": "ACCOUNT_NUMBER",
+    "IP_ADDRESS": "IP_ADDRESS",
+    "MEDICAL_LICENSE": "LICENSE_NUMBER",
+    "URL": "URL",
+    "US_BANK_NUMBER": "ACCOUNT_NUMBER",
+    "US_DRIVER_LICENSE": "LICENSE_NUMBER",
+    "US_PASSPORT": "PASSPORT_NUMBER",
+    "US_SSN": "SSN",
+    "US_ITIN": "OTHER_ID",
+    "ORGANIZATION": "ORGANIZATION",
 }
-
-
-def _normalize(name):
-    # Tolerates "Disease_disorder" / "Disease disorder" / "DISEASE_DISORDER" etc -- the
-    # exact separator/casing used by each checkpoint's own label strings wasn't something
-    # worth gambling on getting byte-exact from the model card alone.
-    return name.replace("_", "").replace(" ", "").replace("-", "").lower()
-
-
-_MACCROBAT_TO_SCHEMA_NORM = {_normalize(k): v for k, v in MACCROBAT_TO_SCHEMA.items()}
-
-MODEL_NAME = "d4data/biomedical-ner-all"
-print(f"Loading {MODEL_NAME}...")
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForTokenClassification.from_pretrained(MODEL_NAME)
-device = "cuda" if torch.cuda.is_available() else "cpu"
-model.to(device).eval()
-id2label = model.config.id2label
-print(f"Ready. Running on {device}.\n")
-
-
-def predict_spans(text):
-    enc = tokenizer(text, return_offsets_mapping=True, truncation=True, max_length=512,
-                     return_tensors="pt")
-    offset_mapping = enc.pop("offset_mapping")[0].tolist()
-    enc = {k: v.to(device) for k, v in enc.items()}
-    with torch.no_grad():
-        logits = model(**enc).logits[0]
-    pred_ids = logits.argmax(dim=-1).tolist()
-    labels = [id2label[i] for i in pred_ids]
-
-    # Map to schema type BEFORE merging, not after (same reasoning as the obi/Stanford
-    # scripts): merge on the same schema-mapped type, ignoring the B-/I- prefix entirely,
-    # since subword-level BIO boundary signal has repeatedly proven unreliable across every
-    # transformer NER model tested in this benchmark so far.
-    entities = []
-    cur = None
-    for i, label in enumerate(labels):
-        cs, ce = offset_mapping[i]
-        if cs == ce:
-            continue
-        if label == "O":
-            if cur:
-                entities.append(cur)
-                cur = None
-            continue
-        etype = label.split("-", 1)[1] if "-" in label else label
-        schema_type = _MACCROBAT_TO_SCHEMA_NORM.get(_normalize(etype), f"D4DATA_{etype}")
-        if cur and cur["type"] == schema_type:
-            cur["end"] = ce
-        else:
-            if cur:
-                entities.append(cur)
-            # Apollo's SentencePiece tokenizer put a token's leading space inside its own
-            # offset, silently shifting entity starts left by one char. This model is
-            # DistilBERT/WordPiece, which doesn't have that problem (confirmed clean here),
-            # but the guard is a harmless no-op either way.
-            while cs < ce and text[cs].isspace():
-                cs += 1
-            cur = {"start": cs, "end": ce, "type": schema_type}
-    if cur:
-        entities.append(cur)
-    return [{"type": e["type"], "start": e["start"], "end": e["end"],
-              "text": text[e["start"]:e["end"]]} for e in entities]
 
 
 def iter_records(path):
@@ -123,9 +78,11 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 
 def score_predictions_relaxed(gold_spans, pred_spans):
-    """Precision and recall are tracked with SEPARATE numerators, each counted at most once
-    per item -- see the sibling scripts for why sharing a single tp count between P and R is
-    wrong whenever predictions and gold aren't 1:1."""
+    """Same type + any character overlap, not exact boundaries -- a tool that splits
+    'Houston, TN' into 'Houston' + 'TN' still gets credit instead of scoring as two full
+    misses. Precision and recall use separate numerators, each counted once per item --
+    sharing a single tp count between them lets a fragmenting model get one gold entity
+    "recalled" multiple times, inflating recall past the true number of gold entities."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
     gold_found = [False] * len(gold_spans)
@@ -142,6 +99,9 @@ def score_predictions_relaxed(gold_spans, pred_spans):
     return pred_tp, fp, fn, gold_tp
 
 
+# Presidio's ID-type entities land in a handful of generic buckets and PHONE/IP_ADDRESS get
+# confused with each other -- collapsed matching credits recognizing the identifier/contact
+# method at all, independent of the exact subtype.
 COLLAPSED_GROUPS = {
     "SSN": "IDENTIFIER", "MEDICAL_RECORD_NUMBER": "IDENTIFIER", "HEALTH_PLAN_ID": "IDENTIFIER",
     "ACCOUNT_NUMBER": "IDENTIFIER", "LICENSE_NUMBER": "IDENTIFIER", "VEHICLE_ID": "IDENTIFIER",
@@ -157,6 +117,9 @@ def _collapsed_type(schema_type):
 
 
 def score_predictions_collapsed(gold_spans, pred_spans):
+    """Same collapsed family (see COLLAPSED_GROUPS) + EXACT boundaries. Deliberately keeps
+    boundaries strict here -- this axis forgives category granularity only, not span
+    precision, which relaxed already covers independently."""
     matched_gold = [False] * len(gold_spans)
     tp, fp = [], []
     for p in pred_spans:
@@ -343,7 +306,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 class ScoreAccumulator:
     def __init__(self):
         self.per_type_strict = {}
-        self.per_type_relaxed = {}
+        self.per_type_relaxed = {}  # type -> [pred_tp, fp, gold_tp, fn]
         self.per_type_collapsed = {}
         self.confusion_strict = {}      # (gold_type, pred_type) -> count, exact boundary
         self.confusion_relaxed = {}     # (gold_type, pred_type) -> count, any overlap
@@ -403,6 +366,9 @@ class ScoreAccumulator:
 
     @staticmethod
     def _print_table_relaxed(bucket, title):
+        # P uses pred_tp (matching predictions); R uses gold_tp (unique matched gold
+        # entities). When tp_pred != tp_gold for a type, that gap means the model is
+        # fragmenting/duplicating predictions against the same gold entities.
         print(f"--- {title} ---")
         totals = [0, 0, 0, 0]
         for etype in sorted(bucket):
@@ -439,7 +405,7 @@ class ScoreAccumulator:
                                "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
                                "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
-        print("=== CONFUSION MATRIX JSON (paste back to reconstruct heatmaps) ===")
+        print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,
             "n_records": self.total_records,
@@ -456,6 +422,10 @@ class ScoreAccumulator:
             render_confusion_matrix_png(self, model_name, sorted(set(in_scope_types)), out_path)
 
 
+print("Loading Presidio analyzer engine...")
+analyzer = AnalyzerEngine()
+print("Ready.\n")
+
 acc = ScoreAccumulator()
 t0 = time.time()
 n = 0
@@ -466,12 +436,18 @@ for rec in iter_records(DATASET_PATH):
     gold = rec["entities"]
     if not text.strip():
         continue
-    preds = predict_spans(text)
+    results = analyzer.analyze(text=text, language="en", score_threshold=SCORE_THRESHOLD)
+    preds = [
+        {"type": PRESIDIO_TO_SCHEMA.get(r.entity_type, f"PRESIDIO_{r.entity_type}"),
+         "start": r.start, "end": r.end, "text": text[r.start:r.end]}
+        for r in results
+    ]
     acc.add(gold, preds)
     n += 1
-    if n % 1000 == 0:
+    if n % 2000 == 0:
         elapsed = time.time() - t0
         print(f"  ...{n} records scored ({n/elapsed:.1f} rec/s, {elapsed/60:.1f} min elapsed)")
 
 print(f"\nDone: {n} records in {(time.time()-t0)/60:.1f} min.\n")
-acc.report(MODEL_NAME, in_scope_types=MACCROBAT_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))
+acc.report(f"Microsoft Presidio (score_threshold={SCORE_THRESHOLD})",
+           in_scope_types=PRESIDIO_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))

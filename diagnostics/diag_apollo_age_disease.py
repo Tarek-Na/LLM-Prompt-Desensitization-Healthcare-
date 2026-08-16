@@ -9,8 +9,7 @@ AGE/DISEASE pair from a real sample and classifies each one as:
                    disagreement, not just "model included more/less context")
 so the AGE finding can be confirmed (or not) as the dominant pattern rather than a one-off.
 
-Self-contained for Colab:
-    !pip install transformers torch
+Dependencies: transformers, torch.
 """
 import json
 import os

@@ -4,8 +4,7 @@ Diagnostic: why does Clinical-AI-Apollo/Medical-NER get near-zero STRICT matches
 predicted spans character-for-character, plus the raw offset_mapping for the first few
 tokens of each entity, to see whether this is a fixed offset error or something else.
 
-Self-contained for Google Colab -- no local/custom imports.
-    !pip install transformers torch
+Dependencies: transformers, torch.
 """
 import json
 import os

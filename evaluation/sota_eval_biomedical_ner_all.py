@@ -1,17 +1,13 @@
 """
-Scores obi/deid_roberta_i2b2 (RoBERTa, fine-tuned on i2b2 2014 de-identification) against
-benchmark_clinical_phi.jsonl.
+Scores d4data/biomedical-ner-all (DistilBERT) against benchmark_clinical_phi.jsonl -- same
+MACCROBAT clinical annotation scheme as Clinical-AI-Apollo/Medical-NER (41 native categories,
+only 4 with a real equivalent here: Age, Date, Disease_disorder, Occupation -- see
+sota_eval_clinical_ai_apollo.py for why).
 
-This model's label scheme is BILOU (Begin/Inside/Last/Unit/Outside), not the standard BIO
-used elsewhere -- transformers' default aggregation_strategy="simple" only understands B-/I-
-prefixes and would silently mis-group L-/U- tagged tokens.
+Same task and label taxonomy as Apollo, different backbone (DistilBERT ~66M params vs
+DeBERTa-v2) -- an architecture-controlled comparison on the same benchmark.
 
-Worse, the model's own B/I/L/U tagging is unreliable on real predictions (see predict_spans()
-below), so this ignores BILOU semantics entirely and just merges consecutive same-type
-tokens -- far more robust to what the model actually outputs.
-
-Self-contained for Colab:
-    !pip install transformers torch
+Dependencies: transformers, torch.
 """
 import json
 
@@ -31,19 +27,21 @@ from transformers import AutoTokenizer, AutoModelForTokenClassification
 DATASET_PATH = "/content/drive/MyDrive/Benchmark/benchmark_clinical_phi.jsonl"
 MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)
 
-# Model's native categories (coarser than full i2b2 -- this checkpoint collapses the 25
-# fine-grained i2b2 categories into 11 buckets) -> our schema. ID is a generic catch-all for
-# any numeric identifier in this model's scheme (can't distinguish SSN/MRN/account/etc from
-# its output), so it maps to our OTHER_ID as the fairest generic bucket rather than guessing
-# a specific ID subtype. OTHERPHI has no equivalent category in our schema and is left
-# unmapped (tracked under its native name so it still counts as a FP, not silently dropped).
-OBI_TO_SCHEMA = {
-    "PATIENT": "NAME", "STAFF": "NAME", "PATORG": "ORGANIZATION", "HOSP": "LOCATION",
-    "LOC": "LOCATION", "AGE": "AGE", "DATE": "DATE", "EMAIL": "EMAIL", "PHONE": "PHONE",
-    "ID": "OTHER_ID",
+MACCROBAT_TO_SCHEMA = {
+    "Age": "AGE", "Date": "DATE", "Disease_disorder": "DISEASE", "Occupation": "PROFESSION",
 }
 
-MODEL_NAME = "obi/deid_roberta_i2b2"
+
+def _normalize(name):
+    # Tolerates "Disease_disorder" / "Disease disorder" / "DISEASE_DISORDER" etc -- the
+    # exact separator/casing used by each checkpoint's own label strings wasn't something
+    # worth gambling on getting byte-exact from the model card alone.
+    return name.replace("_", "").replace(" ", "").replace("-", "").lower()
+
+
+_MACCROBAT_TO_SCHEMA_NORM = {_normalize(k): v for k, v in MACCROBAT_TO_SCHEMA.items()}
+
+MODEL_NAME = "d4data/biomedical-ner-all"
 print(f"Loading {MODEL_NAME}...")
 tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 model = AutoModelForTokenClassification.from_pretrained(MODEL_NAME)
@@ -63,44 +61,39 @@ def predict_spans(text):
     pred_ids = logits.argmax(dim=-1).tolist()
     labels = [id2label[i] for i in pred_ids]
 
-    # obi's B/I/L/U tags are self-contradictory in practice -- e.g. "Aisha" came back as
-    # U-PATIENT + U-PATIENT (two "single-token" entities instead of one two-token name), and
-    # a phone number got B-PHONE/I-PHONE/I-PHONE/I-PHONE followed by five consecutive
-    # L-PHONE tags (L means "last token", so five in a row makes no sense). Trusting the
-    # tags literally fragmented single entities into many, which is why PHONE and OTHER_ID
-    # had tens of thousands of excess false positives. So: ignore the prefix, merge
-    # consecutive same-type tokens, break only on O.
-    # Map to schema type BEFORE merging, not after -- OBI_TO_SCHEMA collapses multiple
-    # native labels onto the same category (PATIENT/STAFF both -> NAME, HOSP/LOC both ->
-    # LOCATION), so if the model flips between two such labels mid-span, merging on the raw
-    # native label would incorrectly split one real entity into two fragments even though
-    # both halves are the same thing in our schema.
+    # Map to schema type BEFORE merging, not after (same reasoning as the obi/Stanford
+    # scripts): merge on the same schema-mapped type, ignoring the B-/I- prefix entirely,
+    # since subword-level BIO boundary signal has repeatedly proven unreliable across every
+    # transformer NER model tested in this benchmark so far.
     entities = []
     cur = None
     for i, label in enumerate(labels):
         cs, ce = offset_mapping[i]
-        if cs == ce:  # special token
+        if cs == ce:
             continue
         if label == "O":
             if cur:
                 entities.append(cur)
                 cur = None
             continue
-        etype = label.split("-", 1)[1]
-        schema_type = OBI_TO_SCHEMA.get(etype, f"OBI_{etype}")
+        etype = label.split("-", 1)[1] if "-" in label else label
+        schema_type = _MACCROBAT_TO_SCHEMA_NORM.get(_normalize(etype), f"D4DATA_{etype}")
         if cur and cur["type"] == schema_type:
             cur["end"] = ce
         else:
             if cur:
                 entities.append(cur)
+            # Apollo's SentencePiece tokenizer put a token's leading space inside its own
+            # offset, silently shifting entity starts left by one char. This model is
+            # DistilBERT/WordPiece, which doesn't have that problem (confirmed clean here),
+            # but the guard is a harmless no-op either way.
+            while cs < ce and text[cs].isspace():
+                cs += 1
             cur = {"start": cs, "end": ce, "type": schema_type}
     if cur:
         entities.append(cur)
-
-    return [
-        {"type": e["type"], "start": e["start"], "end": e["end"], "text": text[e["start"]:e["end"]]}
-        for e in entities
-    ]
+    return [{"type": e["type"], "start": e["start"], "end": e["end"],
+              "text": text[e["start"]:e["end"]]} for e in entities]
 
 
 def iter_records(path):
@@ -129,13 +122,9 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 
 def score_predictions_relaxed(gold_spans, pred_spans):
-    """Same type + any character overlap, not exact boundaries -- a tool that splits an
-    entity into two adjacent pieces still gets credit instead of scoring as two full misses.
-    Precision and recall use separate numerators, each counted once per item: this matters a
-    lot for obi specifically, since it's known to fragment one entity into several
-    overlapping prediction pieces (see predict_spans() above), and sharing a single tp count
-    between P and R would let a fragmented gold entity get "recalled" once per fragment,
-    inflating recall past the true number of gold entities."""
+    """Precision and recall are tracked with SEPARATE numerators, each counted at most once
+    per item -- see the sibling scripts for why sharing a single tp count between P and R is
+    wrong whenever predictions and gold aren't 1:1."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
     gold_found = [False] * len(gold_spans)
@@ -152,8 +141,6 @@ def score_predictions_relaxed(gold_spans, pred_spans):
     return pred_tp, fp, fn, gold_tp
 
 
-# This model's "ID" label collapses every ID-type category into one bucket -- collapsed
-# matching credits recognizing an identifier at all, independent of subtype.
 COLLAPSED_GROUPS = {
     "SSN": "IDENTIFIER", "MEDICAL_RECORD_NUMBER": "IDENTIFIER", "HEALTH_PLAN_ID": "IDENTIFIER",
     "ACCOUNT_NUMBER": "IDENTIFIER", "LICENSE_NUMBER": "IDENTIFIER", "VEHICLE_ID": "IDENTIFIER",
@@ -169,9 +156,6 @@ def _collapsed_type(schema_type):
 
 
 def score_predictions_collapsed(gold_spans, pred_spans):
-    """Same collapsed family (see COLLAPSED_GROUPS) + EXACT boundaries. Deliberately keeps
-    boundaries strict here -- this axis forgives category granularity only, not span
-    precision, which relaxed already covers independently."""
     matched_gold = [False] * len(gold_spans)
     tp, fp = [], []
     for p in pred_spans:
@@ -358,7 +342,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 class ScoreAccumulator:
     def __init__(self):
         self.per_type_strict = {}
-        self.per_type_relaxed = {}  # type -> [pred_tp, fp, gold_tp, fn]
+        self.per_type_relaxed = {}
         self.per_type_collapsed = {}
         self.confusion_strict = {}      # (gold_type, pred_type) -> count, exact boundary
         self.confusion_relaxed = {}     # (gold_type, pred_type) -> count, any overlap
@@ -418,9 +402,6 @@ class ScoreAccumulator:
 
     @staticmethod
     def _print_table_relaxed(bucket, title):
-        # P uses pred_tp (matching predictions); R uses gold_tp (unique matched gold
-        # entities). When tp_pred != tp_gold for a type, that gap means the model is
-        # fragmenting/duplicating predictions against the same gold entities.
         print(f"--- {title} ---")
         totals = [0, 0, 0, 0]
         for etype in sorted(bucket):
@@ -457,7 +438,7 @@ class ScoreAccumulator:
                                "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
                                "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
-        print("=== CONFUSION MATRIX JSON (paste back to reconstruct heatmaps) ===")
+        print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,
             "n_records": self.total_records,
@@ -492,4 +473,4 @@ for rec in iter_records(DATASET_PATH):
         print(f"  ...{n} records scored ({n/elapsed:.1f} rec/s, {elapsed/60:.1f} min elapsed)")
 
 print(f"\nDone: {n} records in {(time.time()-t0)/60:.1f} min.\n")
-acc.report(MODEL_NAME, in_scope_types=OBI_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))
+acc.report(MODEL_NAME, in_scope_types=MACCROBAT_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))

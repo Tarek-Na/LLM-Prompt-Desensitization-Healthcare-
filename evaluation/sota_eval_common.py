@@ -1,13 +1,14 @@
 """
-Score Microsoft Presidio against benchmark_clinical_phi.jsonl.
+Shared infrastructure for scoring SOTA PII/PHI models against merged_clinical_phi.*.jsonl.
 
-Self-contained for Google Colab -- no local/custom imports, only pip-installable packages.
-Run this first in a Colab cell:
-    !pip install presidio-analyzer presidio-anonymizer
-    !python -m spacy download en_core_web_lg
-Then run this script (or paste it into a cell).
+export_benchmark.py imports detokenize_with_offsets/extract_gold_spans from here to build
+the raw-text benchmark. The scoring/confusion-matrix functions below aren't imported by the
+sota_eval_*.py scripts (each is a self-contained file with its own copy) -- they live
+here as the canonical version to copy from when a fix needs to land everywhere at once.
 """
 import json
+import os
+import re
 
 try:
     import matplotlib
@@ -17,53 +18,78 @@ try:
     _HAS_MPL = True
 except ImportError:
     _HAS_MPL = False
-import os
-import time
-from presidio_analyzer import AnalyzerEngine
 
-DATASET_PATH = "/content/drive/MyDrive/Benchmark/benchmark_clinical_phi.jsonl"
-MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)  # 0 = full dataset
-# Without a threshold, analyzer.analyze() returns EVERY regex match regardless of
-# confidence, which floods LICENSE_NUMBER with false positives from Presidio's low-precision
-# US_DRIVER_LICENSE recognizer matching bare digit/alphanumeric IDs (account numbers, MRNs,
-# device IDs) that aren't driver's licenses at all. 0.4 is a common Presidio operating
-# threshold; tune via SOTA_EVAL_SCORE_THRESHOLD (0.0 reproduces unfiltered behavior).
-SCORE_THRESHOLD = float(os.environ.get("SOTA_EVAL_SCORE_THRESHOLD", "0.4"))
-
-# Presidio's own entity vocabulary -> our schema. Anything not listed here (e.g. NRP --
-# nationality/religious/political group, which has no equivalent in our schema) is left
-# unmapped and passed through under its native Presidio name, so the scorer still counts it
-# as a false positive against our ground truth rather than silently discarding it.
-PRESIDIO_TO_SCHEMA = {
-    "PERSON": "NAME",
-    "EMAIL_ADDRESS": "EMAIL",
-    "PHONE_NUMBER": "PHONE",
-    "LOCATION": "LOCATION",
-    "DATE_TIME": "DATE",
-    "CREDIT_CARD": "CREDIT_CARD",
-    "CRYPTO": "CRYPTO_WALLET",
-    "IBAN_CODE": "ACCOUNT_NUMBER",
-    "IP_ADDRESS": "IP_ADDRESS",
-    "MEDICAL_LICENSE": "LICENSE_NUMBER",
-    "URL": "URL",
-    "US_BANK_NUMBER": "ACCOUNT_NUMBER",
-    "US_DRIVER_LICENSE": "LICENSE_NUMBER",
-    "US_PASSPORT": "PASSPORT_NUMBER",
-    "US_SSN": "SSN",
-    "US_ITIN": "OTHER_ID",
-    "ORGANIZATION": "ORGANIZATION",
-}
+# Heuristics for turning a whitespace-joined token list back into natural-looking text.
+# Our tokens already embed most internal punctuation (e.g. "Mary's", "Boston,", "St."), so
+# this only needs to handle the tokens that appear STANDALONE in templates: sentence-final
+# punctuation, list commas/colons/semicolons, closing brackets, and "'s" as its own token.
+_NO_SPACE_BEFORE = {".", ",", ";", ":", "!", "?", ")", "]", "}", "%"}
+_NO_SPACE_BEFORE_PREFIXES = ("'",)  # 's, 're, 've, ll, d, m, n't
+_NO_SPACE_AFTER = {"(", "[", "{"}
 
 
-def iter_records(path):
-    with open(path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line:
-                yield json.loads(line)
+def detokenize_with_offsets(tokens):
+    """Return (text, offsets) where offsets[i] = (char_start, char_end) for tokens[i]."""
+    parts = []
+    offsets = []
+    pos = 0
+    prev_token = None
+    for i, tok in enumerate(tokens):
+        needs_space = i > 0
+        if needs_space and (tok in _NO_SPACE_BEFORE or tok.startswith(_NO_SPACE_BEFORE_PREFIXES)):
+            needs_space = False
+        if needs_space and prev_token in _NO_SPACE_AFTER:
+            needs_space = False
+        if needs_space:
+            parts.append(" ")
+            pos += 1
+        start = pos
+        parts.append(tok)
+        pos += len(tok)
+        offsets.append((start, pos))
+        prev_token = tok
+    return "".join(parts), offsets
+
+
+def extract_gold_spans(tokens, tags, master_labels, text, offsets):
+    """Convert token-index BIO tags into character-offset gold spans: list of
+    {"type", "start", "end", "text"}."""
+    spans = []
+    cur_type, cur_start_tok = None, None
+
+    def _flush(end_tok_idx):
+        if cur_type is not None:
+            char_start = offsets[cur_start_tok][0]
+            char_end = offsets[end_tok_idx - 1][1]
+            spans.append({"type": cur_type, "start": char_start, "end": char_end,
+                          "text": text[char_start:char_end]})
+
+    for i, t in enumerate(tags):
+        label = master_labels[t] if 0 <= t < len(master_labels) else "O"
+        if label == "O" or label.startswith("B-"):
+            _flush(i)
+            cur_type = None
+        if label.startswith("B-"):
+            cur_type, cur_start_tok = label[2:], i
+    _flush(len(tags))
+    return spans
+
+
+def iter_dataset_records(paths):
+    """Yield (tokens, tags) from one or more JSONL files."""
+    for path in paths:
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                rec = json.loads(line)
+                yield rec["tokens"], rec["ner_tags"]
 
 
 def score_predictions_strict(gold_spans, pred_spans):
+    """Strict exact-span match: (type, start, end) must all match. Returns (tp, fp, fn) as
+    lists of span dicts (gold dicts for tp/fn, pred dicts for fp) for per-category tallying."""
     matched_gold = [False] * len(gold_spans)
     tp, fp = [], []
     for p in pred_spans:
@@ -81,11 +107,12 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 
 def score_predictions_relaxed(gold_spans, pred_spans):
-    """Same type + any character overlap, not exact boundaries -- a tool that splits
-    'Houston, TN' into 'Houston' + 'TN' still gets credit instead of scoring as two full
-    misses. Precision and recall use separate numerators, each counted once per item --
-    sharing a single tp count between them lets a fragmenting model get one gold entity
-    "recalled" multiple times, inflating recall past the true number of gold entities."""
+    """Same type + any character overlap, not exact boundaries. Precision and recall use
+    separate numerators, each counted once per item -- sharing a single tp count between
+    them lets a fragmenting model get one gold entity "recalled" multiple times, inflating
+    recall past the true number of gold entities. Returns (pred_tp, fp, fn, gold_tp):
+    pred_tp/fp are prediction dicts (precision side); fn/gold_tp are gold dicts (recall
+    side)."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
     gold_found = [False] * len(gold_spans)
@@ -102,9 +129,9 @@ def score_predictions_relaxed(gold_spans, pred_spans):
     return pred_tp, fp, fn, gold_tp
 
 
-# Presidio's ID-type entities land in a handful of generic buckets and PHONE/IP_ADDRESS get
-# confused with each other -- collapsed matching credits recognizing the identifier/contact
-# method at all, independent of the exact subtype.
+# Real PII tools routinely collapse ID-type categories into one generic label (or confuse
+# PHONE/IP_ADDRESS with each other) -- collapsed matching credits "recognized as an
+# identifier/contact method at all", independent of the exact subtype.
 COLLAPSED_GROUPS = {
     "SSN": "IDENTIFIER", "MEDICAL_RECORD_NUMBER": "IDENTIFIER", "HEALTH_PLAN_ID": "IDENTIFIER",
     "ACCOUNT_NUMBER": "IDENTIFIER", "LICENSE_NUMBER": "IDENTIFIER", "VEHICLE_ID": "IDENTIFIER",
@@ -122,7 +149,8 @@ def _collapsed_type(schema_type):
 def score_predictions_collapsed(gold_spans, pred_spans):
     """Same collapsed family (see COLLAPSED_GROUPS) + EXACT boundaries. Deliberately keeps
     boundaries strict here -- this axis forgives category granularity only, not span
-    precision, which relaxed already covers independently."""
+    precision, which relaxed already covers independently. Combining both kinds of leniency
+    into one number would hide which problem is actually present."""
     matched_gold = [False] * len(gold_spans)
     tp, fp = [], []
     for p in pred_spans:
@@ -193,19 +221,6 @@ def _update_confusion_overlap(confusion, gold_spans, pred_spans):
         if not pred_matched[pi]:
             key = ("SPURIOUS", p["type"])
             confusion[key] = confusion.get(key, 0) + 1
-
-
-
-def _safe_filename(name):
-    out, prev_underscore = [], False
-    for ch in name.split("(")[0]:
-        if ch.isalnum():
-            out.append(ch.lower())
-            prev_underscore = False
-        elif not prev_underscore:
-            out.append("_")
-            prev_underscore = True
-    return "".join(out).strip("_")
 
 
 _RAMP = ["#f7fbff", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
@@ -308,9 +323,10 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 
 class ScoreAccumulator:
     def __init__(self):
-        self.per_type_strict = {}
-        self.per_type_relaxed = {}  # type -> [pred_tp, fp, gold_tp, fn]
-        self.per_type_collapsed = {}
+        self.per_type_strict = {}   # type -> [tp, fp, fn]
+        self.per_type_relaxed = {}  # type -> [pred_tp, fp, gold_tp, fn] -- see
+        # score_predictions_relaxed for why precision/recall numerators are kept separate.
+        self.per_type_collapsed = {}  # bucketed by collapsed group name, not original type
         self.confusion_strict = {}      # (gold_type, pred_type) -> count, exact boundary
         self.confusion_relaxed = {}     # (gold_type, pred_type) -> count, any overlap
         self.confusion_collapsed = {}   # (gold_family, pred_family) -> count, exact boundary
@@ -334,6 +350,9 @@ class ScoreAccumulator:
         for g in tp:
             bucket.setdefault(key(g["type"]), [0, 0, 0])[0] += 1
         for p in fp:
+            # Unmapped/out-of-schema predictions are tracked under their own native-model
+            # label rather than silently dropped, so precision isn't inflated by ignoring
+            # predictions the mapping layer couldn't place.
             bucket.setdefault(key(p["type"]), [0, 0, 0])[1] += 1
         for g in fn:
             bucket.setdefault(key(g["type"]), [0, 0, 0])[2] += 1
@@ -355,7 +374,9 @@ class ScoreAccumulator:
         totals = [0, 0, 0]
         for etype in sorted(bucket):
             tp, fp, fn = bucket[etype]
-            totals[0] += tp; totals[1] += fp; totals[2] += fn
+            totals[0] += tp
+            totals[1] += fp
+            totals[2] += fn
             p = tp / (tp + fp) if (tp + fp) else float("nan")
             r = tp / (tp + fn) if (tp + fn) else float("nan")
             f1 = 2 * p * r / (p + r) if (p + r) and (tp + fp) and (tp + fn) else float("nan")
@@ -369,14 +390,19 @@ class ScoreAccumulator:
 
     @staticmethod
     def _print_table_relaxed(bucket, title):
-        # P uses pred_tp (matching predictions); R uses gold_tp (unique matched gold
-        # entities). When tp_pred != tp_gold for a type, that gap means the model is
-        # fragmenting/duplicating predictions against the same gold entities.
+        # Precision uses pred_tp (matching predictions); recall uses gold_tp (unique matched
+        # gold entities) -- see score_predictions_relaxed. When a type's tp_pred != tp_gold,
+        # that gap is itself informative: it means the model is fragmenting or duplicating
+        # predictions against the same gold entities rather than emitting one clean
+        # prediction per entity.
         print(f"--- {title} ---")
         totals = [0, 0, 0, 0]
         for etype in sorted(bucket):
             ptp, fp, gtp, fn = bucket[etype]
-            totals[0] += ptp; totals[1] += fp; totals[2] += gtp; totals[3] += fn
+            totals[0] += ptp
+            totals[1] += fp
+            totals[2] += gtp
+            totals[3] += fn
             p = ptp / (ptp + fp) if (ptp + fp) else float("nan")
             r = gtp / (gtp + fn) if (gtp + fn) else float("nan")
             f1 = 2 * p * r / (p + r) if (ptp + fp) and (gtp + fn) and (p + r) else float("nan")
@@ -408,7 +434,7 @@ class ScoreAccumulator:
                                "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
                                "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
-        print("=== CONFUSION MATRIX JSON (paste back to reconstruct heatmaps) ===")
+        print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,
             "n_records": self.total_records,
@@ -420,37 +446,6 @@ class ScoreAccumulator:
             "confusion_collapsed": [[k[0], k[1], v] for k, v in self.confusion_collapsed.items()],
         }))
         if in_scope_types:
-            safe_name = _safe_filename(model_name)
+            safe_name = re.sub(r"[^A-Za-z0-9]+", "_", model_name.split("(")[0]).strip("_").lower()
             out_path = os.path.join(out_dir or ".", f"confusion_matrix_{safe_name}.png")
             render_confusion_matrix_png(self, model_name, sorted(set(in_scope_types)), out_path)
-
-
-print("Loading Presidio analyzer engine...")
-analyzer = AnalyzerEngine()
-print("Ready.\n")
-
-acc = ScoreAccumulator()
-t0 = time.time()
-n = 0
-for rec in iter_records(DATASET_PATH):
-    if MAX_RECORDS and n >= MAX_RECORDS:
-        break
-    text = rec["text"]
-    gold = rec["entities"]
-    if not text.strip():
-        continue
-    results = analyzer.analyze(text=text, language="en", score_threshold=SCORE_THRESHOLD)
-    preds = [
-        {"type": PRESIDIO_TO_SCHEMA.get(r.entity_type, f"PRESIDIO_{r.entity_type}"),
-         "start": r.start, "end": r.end, "text": text[r.start:r.end]}
-        for r in results
-    ]
-    acc.add(gold, preds)
-    n += 1
-    if n % 2000 == 0:
-        elapsed = time.time() - t0
-        print(f"  ...{n} records scored ({n/elapsed:.1f} rec/s, {elapsed/60:.1f} min elapsed)")
-
-print(f"\nDone: {n} records in {(time.time()-t0)/60:.1f} min.\n")
-acc.report(f"Microsoft Presidio (score_threshold={SCORE_THRESHOLD})",
-           in_scope_types=PRESIDIO_TO_SCHEMA.values(), out_dir=os.path.dirname(DATASET_PATH))
