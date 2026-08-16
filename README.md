@@ -1,9 +1,8 @@
 # LLM-Prompt-Desensitization-Healthcare
 
 A 30-category healthcare PII/PHI + clinical-entity NER benchmark, and a scored comparison
-of 7 SOTA PII/PHI and biomedical NER models against it. The dataset is the contribution —
-this repo does not train a model, it measures how well existing models handle healthcare
-text de-identification and clinical entity extraction.
+of 7 SOTA PII/PHI and biomedical NER models against it. This repo does not train a model,
+it measures how well existing models handle healthcare text de-identification and clinical entity extraction.
 
 ## Entity schema (30 types)
 
