@@ -1,7 +1,7 @@
 """
 Diagnostic: why does d4data/biomedical-ner-all's DATE row have such a large strict-vs-relaxed
 gap (32.60% strict F1 vs 76.86% relaxed F1)? That's almost exactly the shape Apollo's DATE
-row had before its SentencePiece leading-space bug was found and fixed -- so this checks the
+row had before its SentencePiece leading-space bug was found and fixed, so this checks the
 same thing for d4data (DistilBERT/WordPiece) rather than assuming WordPiece makes it immune.
 
 For every gold DATE span in a sample of real records, this finds predictions that overlap it
@@ -46,7 +46,7 @@ print(f"Ready. Running on {device}.\n")
 
 
 def predict_spans(text):
-    # Identical merge logic to sota_eval_biomedical_ner_all.py -- this has to match the real
+    # Identical merge logic to sota_eval_biomedical_ner_all.py. This has to match the real
     # scoring script exactly, or any pattern found here wouldn't explain the real numbers.
     enc = tokenizer(text, return_offsets_mapping=True, truncation=True, max_length=512,
                      return_tensors="pt")

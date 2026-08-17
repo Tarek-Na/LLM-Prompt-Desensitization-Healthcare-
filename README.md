@@ -29,12 +29,12 @@ scored on the same data.
 | d4data/biomedical-ner-all | 4 | 29.38% | 26.17% | **27.69%** |
 
 "In-scope" P/R/F1 restricts each model's aggregate to only the entity types its own label
-scheme can ever predict — scoring a PII tool against biomedical categories it was never
+scheme can ever predict. Scoring a PII tool against biomedical categories it was never
 built to detect (or vice versa) isn't a fair comparison. STRICT matching (exact type +
 exact span boundary) throughout.
 
-Full writeup — per-model bugs found and fixed, real findings vs. scoring artifacts, and the
-evidence behind every number — is in **[RESULTS_SUMMARY.md](RESULTS_SUMMARY.md)**.
+Full writeup (per-model bugs found and fixed, real findings vs. scoring artifacts, and the
+evidence behind every number) is in **[RESULTS_SUMMARY.md](RESULTS_SUMMARY.md)**.
 
 ## Repo layout
 
@@ -73,7 +73,7 @@ RESULTS_SUMMARY.md                                              full results, me
 
 ## Running an evaluation
 
-Each script in `evaluation/` is self-contained — standard library plus the one model's own
+Each script in `evaluation/` is self-contained: standard library plus the one model's own
 pip package, no imports from other files in this repo. Install the dependencies listed at
 the top of the script, set `DATASET_PATH` to point at `dataset/benchmark_clinical_phi.jsonl`,
 and run it. Each run scores the full dataset, prints STRICT/RELAXED/COLLAPSED per-type
@@ -84,11 +84,11 @@ dataset.
 
 ## Known limitations
 
-- The benchmark is synthetic (template-generated), not real clinical text — obi and
+- The benchmark is synthetic (template-generated), not real clinical text. obi and
   Stanford's underlying models were trained on real i2b2 notes, so there's an unmeasured
   domain-shift gap in both directions.
 - "In-scope" P/R/F1 is a fairness metric for comparing models, not a practical
-  "how much PHI did this tool actually catch" number — that would need full-schema recall
+  "how much PHI did this tool actually catch" number. That would need full-schema recall
   reported separately.
 - Presidio's threshold (0.4) and GLiNER's threshold (0.5) are single operating points, not
   tuned via a precision/recall sweep.

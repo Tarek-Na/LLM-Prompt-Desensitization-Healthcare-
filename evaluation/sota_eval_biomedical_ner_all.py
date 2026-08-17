@@ -1,11 +1,11 @@
 """
-Scores d4data/biomedical-ner-all (DistilBERT) against benchmark_clinical_phi.jsonl -- same
+Scores d4data/biomedical-ner-all (DistilBERT) against benchmark_clinical_phi.jsonl. Same
 MACCROBAT clinical annotation scheme as Clinical-AI-Apollo/Medical-NER (41 native categories,
-only 4 with a real equivalent here: Age, Date, Disease_disorder, Occupation -- see
+only 4 with a real equivalent here: Age, Date, Disease_disorder, Occupation; see
 sota_eval_clinical_ai_apollo.py for why).
 
 Same task and label taxonomy as Apollo, different backbone (DistilBERT ~66M params vs
-DeBERTa-v2) -- an architecture-controlled comparison on the same benchmark.
+DeBERTa-v2). An architecture-controlled comparison on the same benchmark.
 
 Dependencies: transformers, torch.
 """
@@ -33,7 +33,7 @@ MACCROBAT_TO_SCHEMA = {
 
 
 def _normalize(name):
-    # Tolerates "Disease_disorder" / "Disease disorder" / "DISEASE_DISORDER" etc -- the
+    # Tolerates "Disease_disorder" / "Disease disorder" / "DISEASE_DISORDER" etc. The
     # exact separator/casing used by each checkpoint's own label strings wasn't something
     # worth gambling on getting byte-exact from the model card alone.
     return name.replace("_", "").replace(" ", "").replace("-", "").lower()
@@ -123,7 +123,7 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 def score_predictions_relaxed(gold_spans, pred_spans):
     """Precision and recall are tracked with SEPARATE numerators, each counted at most once
-    per item -- see the sibling scripts for why sharing a single tp count between P and R is
+    per item; see the sibling scripts for why sharing a single tp count between P and R is
     wrong whenever predictions and gold aren't 1:1."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
@@ -205,7 +205,7 @@ def _update_confusion_exact(confusion, gold_spans, pred_spans, collapse=False):
 
 def _update_confusion_overlap(confusion, gold_spans, pred_spans):
     """Pairs a gold span with EVERY prediction that overlaps it at all, regardless of type
-    -- the RELAXED axis's own matching rule, but tallied as (gold_type, pred_type) instead
+    (the RELAXED axis's own matching rule), but tallied as (gold_type, pred_type) instead
     of a tp/fp/fn count, so granularity/fragmentation confusion is visible directly."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
@@ -247,12 +247,12 @@ _DIAG_COLOR = "#eb6834"
 
 def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis="strict"):
     """Render a confusion matrix (in-scope gold type vs predicted type) straight to a PNG on
-    disk -- no manual copy/paste from console output required. axis="strict" or "collapsed"
+    disk, no manual copy/paste from console output required. axis="strict" or "collapsed"
     only: both pair gold/pred on an EXACT span boundary, so summing a row reproduces that
     type's true gold count. "relaxed" pairs a gold span with EVERY overlapping prediction, so
     it isn't meaningful to render the same way."""
     if not _HAS_MPL:
-        print(f"[confusion matrix] matplotlib not available -- skipping PNG render for {model_name}")
+        print(f"[confusion matrix] matplotlib not available, skipping PNG render for {model_name}")
         return
     confusion = acc.confusion_strict if axis == "strict" else acc.confusion_collapsed
 
@@ -268,7 +268,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 
     rows = [t for t in in_scope_types if row_totals.get(t)]
     if not rows:
-        print(f"[confusion matrix] no in-scope gold rows found -- skipping PNG render for {model_name}")
+        print(f"[confusion matrix] no in-scope gold rows found, skipping PNG render for {model_name}")
         return
     cols = set()
     for g in rows:
@@ -321,7 +321,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
         counts = [t[1] for t in spurious_top][::-1]
         ax2.barh(labels, counts, color="#eb6834")
         ax2.set_xlabel("count", fontsize=8)
-        ax2.set_title(f"Top predicted types with NO gold overlap at all -- {spurious_total:,} total spurious predictions",
+        ax2.set_title(f"Top predicted types with NO gold overlap at all: {spurious_total:,} total spurious predictions",
                        fontsize=9)
         ax2.tick_params(labelsize=7.5)
         for spine in ("top", "right"):
@@ -329,7 +329,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
     else:
         ax2.axis("off")
 
-    fig.suptitle(f"{axis.upper()} confusion (gold vs predicted type, exact span boundary) -- "
+    fig.suptitle(f"{axis.upper()} confusion (gold vs predicted type, exact span boundary), "
                   "in-scope gold rows only; native model categories the benchmark has no "
                   "equivalent for are kept as columns, not discarded",
                   fontsize=7.5, y=1.0)
@@ -433,11 +433,11 @@ class ScoreAccumulator:
         self._print_table_relaxed(self.per_type_relaxed, "RELAXED (exact type, any character overlap)")
         self._print_table(self.per_type_collapsed, "COLLAPSED (same identifier/contact family, exact span boundary)")
         self._print_confusion(self.confusion_strict,
-                               "CONFUSION MATRIX -- STRICT (exact span boundary, any type pairing)")
+                               "CONFUSION MATRIX: STRICT (exact span boundary, any type pairing)")
         self._print_confusion(self.confusion_relaxed,
-                               "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
+                               "CONFUSION MATRIX: RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
-                               "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
+                               "CONFUSION MATRIX: COLLAPSED (exact span boundary, collapsed family pairing)")
         print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,

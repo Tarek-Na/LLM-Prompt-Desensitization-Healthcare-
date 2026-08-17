@@ -3,10 +3,10 @@ Diagnostic: systematically checks Apollo's residual AGE/DISEASE strict-vs-relaxe
 (post SentencePiece-offset fix). Previously this was only spot-checked on a single AGE
 example (gold "19" vs Apollo's "19 years old"). This pulls every overlap-but-not-exact
 AGE/DISEASE pair from a real sample and classifies each one as:
-    extension   -- predicted span is gold span plus extra text on one or both sides
-    truncation  -- predicted span is a strict substring of gold
-    shift       -- predicted span overlaps but isn't a clean superset/subset (real boundary
-                   disagreement, not just "model included more/less context")
+    extension:  predicted span is gold span plus extra text on one or both sides
+    truncation: predicted span is a strict substring of gold
+    shift:      predicted span overlaps but isn't a clean superset/subset (real boundary
+                disagreement, not just "model included more/less context")
 so the AGE finding can be confirmed (or not) as the dominant pattern rather than a one-off.
 
 Dependencies: transformers, torch.
@@ -45,7 +45,7 @@ print(f"Ready. Running on {device}.\n")
 
 def predict_spans(text):
     # Identical merge logic to sota_eval_clinical_ai_apollo.py, including the SentencePiece
-    # leading-space trim -- has to match the real scoring script exactly.
+    # leading-space trim, has to match the real scoring script exactly.
     enc = tokenizer(text, return_offsets_mapping=True, truncation=True, max_length=512,
                      return_tensors="pt")
     offset_mapping = enc.pop("offset_mapping")[0].tolist()

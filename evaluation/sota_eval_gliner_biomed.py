@@ -2,18 +2,18 @@
 Scores GLiNER-biomed (zero-shot NER, prompted with our schema's label names) against
 benchmark_clinical_phi.jsonl.
 
-Unlike every other script here, GLiNER isn't a classifier with a fixed label set -- it's a
+Unlike every other script here, GLiNER isn't a classifier with a fixed label set. It's a
 zero-shot span extractor that takes an arbitrary list of label strings at call time
 (`model.predict_entities(text, labels, threshold)`) and returns spans with those exact
 labels attached. That makes it the one model in this benchmark that can be asked about all
 30 schema categories directly, rather than being limited to whatever it was fine-tuned on.
 
 Two things to get right or this runs painfully slowly:
-  1. GLiNER.from_pretrained() does NOT put the model on GPU by default -- call .to(device)
+  1. GLiNER.from_pretrained() does NOT put the model on GPU by default. Call .to(device)
      yourself, or a T4 runtime will silently run the whole thing on CPU.
   2. predict_entities() scores one text per call, so looping it one record at a time never
      lets the GPU batch anything. Use model.batch_predict_entities(texts, labels, threshold)
-     instead -- this script buffers records into batches before calling it.
+     instead; this script buffers records into batches before calling it.
 
 Dependencies: gliner.
 """
@@ -37,7 +37,7 @@ MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)
 BATCH_SIZE = int(os.environ.get("SOTA_EVAL_BATCH_SIZE", "16") or 16)
 # GLiNER's own library default is 0.5. Zero-shot span extraction across 30 simultaneous
 # labels is a harder prompt than the handful GLiNER's own benchmarks typically use, so this
-# is very much worth tuning -- lower it via SOTA_EVAL_SCORE_THRESHOLD if recall looks weak.
+# is very much worth tuning: lower it via SOTA_EVAL_SCORE_THRESHOLD if recall looks weak.
 SCORE_THRESHOLD = float(os.environ.get("SOTA_EVAL_SCORE_THRESHOLD", "0.5"))
 
 MODEL_NAME = "Ihor/gliner-biomed-base-v1.0"
@@ -73,7 +73,7 @@ print(f"Ready. Running on {device}. Prompting with {len(GLINER_LABELS)} labels p
 
 def predict_spans_batch(texts):
     """Runs one batched forward pass for up to BATCH_SIZE texts at once, instead of one
-    predict_entities() call per record -- see the module docstring for why the unbatched
+    predict_entities() call per record. See the module docstring for why the unbatched
     version leaves the GPU almost entirely idle."""
     batch_ents = model.batch_predict_entities(texts, GLINER_LABELS, threshold=SCORE_THRESHOLD)
     return [
@@ -113,7 +113,7 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 def score_predictions_relaxed(gold_spans, pred_spans):
     """Precision and recall are tracked with SEPARATE numerators, each counted at most once
-    per item -- see the sibling scripts for why sharing a single tp count between P and R is
+    per item; see the sibling scripts for why sharing a single tp count between P and R is
     wrong whenever predictions and gold aren't 1:1."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
@@ -197,7 +197,7 @@ def _update_confusion_exact(confusion, gold_spans, pred_spans, collapse=False):
 
 def _update_confusion_overlap(confusion, gold_spans, pred_spans):
     """Pairs a gold span with EVERY prediction that overlaps it at all, regardless of type
-    -- the RELAXED axis's own matching rule, but tallied as (gold_type, pred_type) instead
+    (the RELAXED axis's own matching rule), but tallied as (gold_type, pred_type) instead
     of a tp/fp/fn count, so granularity/fragmentation confusion is visible directly."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
@@ -239,12 +239,12 @@ _DIAG_COLOR = "#eb6834"
 
 def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis="strict"):
     """Render a confusion matrix (in-scope gold type vs predicted type) straight to a PNG on
-    disk -- no manual copy/paste from console output required. axis="strict" or "collapsed"
+    disk, no manual copy/paste from console output required. axis="strict" or "collapsed"
     only: both pair gold/pred on an EXACT span boundary, so summing a row reproduces that
     type's true gold count. "relaxed" pairs a gold span with EVERY overlapping prediction, so
     it isn't meaningful to render the same way."""
     if not _HAS_MPL:
-        print(f"[confusion matrix] matplotlib not available -- skipping PNG render for {model_name}")
+        print(f"[confusion matrix] matplotlib not available, skipping PNG render for {model_name}")
         return
     confusion = acc.confusion_strict if axis == "strict" else acc.confusion_collapsed
 
@@ -260,7 +260,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 
     rows = [t for t in in_scope_types if row_totals.get(t)]
     if not rows:
-        print(f"[confusion matrix] no in-scope gold rows found -- skipping PNG render for {model_name}")
+        print(f"[confusion matrix] no in-scope gold rows found, skipping PNG render for {model_name}")
         return
     cols = set()
     for g in rows:
@@ -313,7 +313,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
         counts = [t[1] for t in spurious_top][::-1]
         ax2.barh(labels, counts, color="#eb6834")
         ax2.set_xlabel("count", fontsize=8)
-        ax2.set_title(f"Top predicted types with NO gold overlap at all -- {spurious_total:,} total spurious predictions",
+        ax2.set_title(f"Top predicted types with NO gold overlap at all: {spurious_total:,} total spurious predictions",
                        fontsize=9)
         ax2.tick_params(labelsize=7.5)
         for spine in ("top", "right"):
@@ -321,7 +321,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
     else:
         ax2.axis("off")
 
-    fig.suptitle(f"{axis.upper()} confusion (gold vs predicted type, exact span boundary) -- "
+    fig.suptitle(f"{axis.upper()} confusion (gold vs predicted type, exact span boundary), "
                   "in-scope gold rows only; native model categories the benchmark has no "
                   "equivalent for are kept as columns, not discarded",
                   fontsize=7.5, y=1.0)
@@ -425,11 +425,11 @@ class ScoreAccumulator:
         self._print_table_relaxed(self.per_type_relaxed, "RELAXED (exact type, any character overlap)")
         self._print_table(self.per_type_collapsed, "COLLAPSED (same identifier/contact family, exact span boundary)")
         self._print_confusion(self.confusion_strict,
-                               "CONFUSION MATRIX -- STRICT (exact span boundary, any type pairing)")
+                               "CONFUSION MATRIX: STRICT (exact span boundary, any type pairing)")
         self._print_confusion(self.confusion_relaxed,
-                               "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
+                               "CONFUSION MATRIX: RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
-                               "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
+                               "CONFUSION MATRIX: COLLAPSED (exact span boundary, collapsed family pairing)")
         print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,

@@ -27,7 +27,7 @@ MAX_RECORDS = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "0") or 0)  # 0 = full
 # threshold; tune via SOTA_EVAL_SCORE_THRESHOLD (0.0 reproduces unfiltered behavior).
 SCORE_THRESHOLD = float(os.environ.get("SOTA_EVAL_SCORE_THRESHOLD", "0.4"))
 
-# Presidio's own entity vocabulary -> our schema. Anything not listed here (e.g. NRP --
+# Presidio's own entity vocabulary -> our schema. Anything not listed here (e.g. NRP,
 # nationality/religious/political group, which has no equivalent in our schema) is left
 # unmapped and passed through under its native Presidio name, so the scorer still counts it
 # as a false positive against our ground truth rather than silently discarding it.
@@ -78,10 +78,10 @@ def score_predictions_strict(gold_spans, pred_spans):
 
 
 def score_predictions_relaxed(gold_spans, pred_spans):
-    """Same type + any character overlap, not exact boundaries -- a tool that splits
+    """Same type + any character overlap, not exact boundaries. A tool that splits
     'Houston, TN' into 'Houston' + 'TN' still gets credit instead of scoring as two full
-    misses. Precision and recall use separate numerators, each counted once per item --
-    sharing a single tp count between them lets a fragmenting model get one gold entity
+    misses. Precision and recall use separate numerators, each counted once per item.
+    Sharing a single tp count between them lets a fragmenting model get one gold entity
     "recalled" multiple times, inflating recall past the true number of gold entities."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
@@ -100,7 +100,7 @@ def score_predictions_relaxed(gold_spans, pred_spans):
 
 
 # Presidio's ID-type entities land in a handful of generic buckets and PHONE/IP_ADDRESS get
-# confused with each other -- collapsed matching credits recognizing the identifier/contact
+# confused with each other. Collapsed matching credits recognizing the identifier/contact
 # method at all, independent of the exact subtype.
 COLLAPSED_GROUPS = {
     "SSN": "IDENTIFIER", "MEDICAL_RECORD_NUMBER": "IDENTIFIER", "HEALTH_PLAN_ID": "IDENTIFIER",
@@ -118,7 +118,7 @@ def _collapsed_type(schema_type):
 
 def score_predictions_collapsed(gold_spans, pred_spans):
     """Same collapsed family (see COLLAPSED_GROUPS) + EXACT boundaries. Deliberately keeps
-    boundaries strict here -- this axis forgives category granularity only, not span
+    boundaries strict here, since this axis forgives category granularity only, not span
     precision, which relaxed already covers independently."""
     matched_gold = [False] * len(gold_spans)
     tp, fp = [], []
@@ -169,7 +169,7 @@ def _update_confusion_exact(confusion, gold_spans, pred_spans, collapse=False):
 
 def _update_confusion_overlap(confusion, gold_spans, pred_spans):
     """Pairs a gold span with EVERY prediction that overlaps it at all, regardless of type
-    -- the RELAXED axis's own matching rule, but tallied as (gold_type, pred_type) instead
+    (the RELAXED axis's own matching rule), but tallied as (gold_type, pred_type) instead
     of a tp/fp/fn count, so granularity/fragmentation confusion is visible directly."""
     def overlaps(a, b):
         return a["start"] < b["end"] and b["start"] < a["end"]
@@ -211,12 +211,12 @@ _DIAG_COLOR = "#eb6834"
 
 def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis="strict"):
     """Render a confusion matrix (in-scope gold type vs predicted type) straight to a PNG on
-    disk -- no manual copy/paste from console output required. axis="strict" or "collapsed"
+    disk, no manual copy/paste from console output required. axis="strict" or "collapsed"
     only: both pair gold/pred on an EXACT span boundary, so summing a row reproduces that
     type's true gold count. "relaxed" pairs a gold span with EVERY overlapping prediction, so
     it isn't meaningful to render the same way."""
     if not _HAS_MPL:
-        print(f"[confusion matrix] matplotlib not available -- skipping PNG render for {model_name}")
+        print(f"[confusion matrix] matplotlib not available, skipping PNG render for {model_name}")
         return
     confusion = acc.confusion_strict if axis == "strict" else acc.confusion_collapsed
 
@@ -232,7 +232,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
 
     rows = [t for t in in_scope_types if row_totals.get(t)]
     if not rows:
-        print(f"[confusion matrix] no in-scope gold rows found -- skipping PNG render for {model_name}")
+        print(f"[confusion matrix] no in-scope gold rows found, skipping PNG render for {model_name}")
         return
     cols = set()
     for g in rows:
@@ -285,7 +285,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
         counts = [t[1] for t in spurious_top][::-1]
         ax2.barh(labels, counts, color="#eb6834")
         ax2.set_xlabel("count", fontsize=8)
-        ax2.set_title(f"Top predicted types with NO gold overlap at all -- {spurious_total:,} total spurious predictions",
+        ax2.set_title(f"Top predicted types with NO gold overlap at all: {spurious_total:,} total spurious predictions",
                        fontsize=9)
         ax2.tick_params(labelsize=7.5)
         for spine in ("top", "right"):
@@ -293,7 +293,7 @@ def render_confusion_matrix_png(acc, model_name, in_scope_types, out_path, axis=
     else:
         ax2.axis("off")
 
-    fig.suptitle(f"{axis.upper()} confusion (gold vs predicted type, exact span boundary) -- "
+    fig.suptitle(f"{axis.upper()} confusion (gold vs predicted type, exact span boundary), "
                   "in-scope gold rows only; native model categories the benchmark has no "
                   "equivalent for are kept as columns, not discarded",
                   fontsize=7.5, y=1.0)
@@ -400,11 +400,11 @@ class ScoreAccumulator:
         self._print_table_relaxed(self.per_type_relaxed, "RELAXED (exact type, any character overlap)")
         self._print_table(self.per_type_collapsed, "COLLAPSED (same identifier/contact family, exact span boundary)")
         self._print_confusion(self.confusion_strict,
-                               "CONFUSION MATRIX -- STRICT (exact span boundary, any type pairing)")
+                               "CONFUSION MATRIX: STRICT (exact span boundary, any type pairing)")
         self._print_confusion(self.confusion_relaxed,
-                               "CONFUSION MATRIX -- RELAXED (any character overlap, any type pairing)")
+                               "CONFUSION MATRIX: RELAXED (any character overlap, any type pairing)")
         self._print_confusion(self.confusion_collapsed,
-                               "CONFUSION MATRIX -- COLLAPSED (exact span boundary, collapsed family pairing)")
+                               "CONFUSION MATRIX: COLLAPSED (exact span boundary, collapsed family pairing)")
         print("=== CONFUSION MATRIX JSON ===")
         print(json.dumps({
             "model": model_name,

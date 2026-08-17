@@ -3,7 +3,7 @@
 #
 # Deliberately dependency-free: only the Python standard library is used
 # (urllib, json, random). No `datasets` / `huggingface_hub` / `pyarrow`
-# install is required -- `python build_dataset.py` just works, in VS Code
+# install is required, so `python build_dataset.py` just works: in VS Code,
 # or anywhere else with a plain Python 3 interpreter and network access.
 # Source data is fetched directly over HTTP as JSON (raw dataset files
 # where available, the HF datasets-server rows API otherwise), one local
@@ -35,15 +35,15 @@ SPLIT_PATHS = {
 
 # =====================================================================
 # Master label schema
-# NAME/DATE/LOCATION (not PHI_NAME/PHI_DATE/PHI_LOC) per instruction --
+# NAME/DATE/LOCATION (not PHI_NAME/PHI_DATE/PHI_LOC) per instruction,
 # simpler, generic category names.
 # =====================================================================
 # Schema v2: expanded from 9 to 29 entity types so this dataset can serve as a common
 # label space when benchmarking against SOTA PII/PHI de-identification models. Previously
-# only NAME/DATE/LOCATION covered PHI -- but SOTA de-id tools (i2b2-trained clinical
+# only NAME/DATE/LOCATION covered PHI, but SOTA de-id tools (i2b2-trained clinical
 # de-identifiers, and general-purpose PII scrubbers like Presidio/AWS Comprehend PII/Google
 # DLP) each detect a different subset of identifier types (phone, SSN, MRN, IP address,
-# credit card, ...) that we previously had no label for at all -- meaning even a CORRECT
+# credit card, ...) that we previously had no label for at all, meaning even a CORRECT
 # detection from a SOTA model couldn't be scored against our data, since there was no
 # ground-truth category to compare it to. This is a schema-breaking change: any adapter
 # trained against the old 19-label schema is incompatible with this one.
@@ -158,7 +158,7 @@ def map_str_to_master(tag_str):
     return master_label2id.get(f"{prefix}{canonical}", 0)
 
 # =====================================================================
-# Source 1 & 2: tner/bc5cdr and tner/bionlp2004 -- both host raw
+# Source 1 & 2: tner/bc5cdr and tner/bionlp2004, both host raw
 # JSON-lines files directly on the hub (dataset/{split}.json) plus a
 # dataset/label.json giving the exact int -> label-string scheme, so no
 # guessing is needed for either.
@@ -189,8 +189,8 @@ def fetch_tner_dataset(repo_id, source_name, splits=("train", "valid", "test")):
     return examples
 
 # =====================================================================
-# Source 3 & 4: bigbio/blurb (ncbi_disease config) and disi-unibo-nlp/biored
-# -- fetched page-by-page via the HF datasets-server rows API (plain JSON,
+# Source 3 & 4: bigbio/blurb (ncbi_disease config) and disi-unibo-nlp/biored,
+# fetched page-by-page via the HF datasets-server rows API (plain JSON,
 # no parquet/arrow decoding needed).
 # =====================================================================
 def get_split_row_count(dataset, config, split):
@@ -237,7 +237,7 @@ def fetch_rows_via_datasets_server(dataset, config, split, page_size=100):
     print(f"Loaded {dataset}/{config}/{split}: {len(rows)} rows")
     return rows
 
-# ncbi_disease's ClassLabel names are the bare ["O", "B", "I"] -- the entity
+# ncbi_disease's ClassLabel names are the bare ["O", "B", "I"], the entity
 # type isn't encoded in the tag at all, it's implicit (disease-only dataset).
 NCBI_ID_TO_BIO = {0: "O", 1: "B", 2: "I"}
 
@@ -254,7 +254,7 @@ def align_biored_row(row):
 
 # =====================================================================
 # Source 5 & 6: bigbio/tmvar_v2 (genetic variant mentions) and bigbio/linnaeus
-# (species mentions) -- both address the two most underrepresented categories
+# (species mentions), both address the two most underrepresented categories
 # (VARIANT, SPECIES). Both ship in BigBio's char-offset "kb" schema (raw text +
 # entity character spans) rather than pre-tokenized BIO, so they need their own
 # offset-based tokenizer/aligner, unlike the pre-tokenized sources above.
@@ -319,8 +319,8 @@ def _align_span_entities(text, entities, target_type):
     return tokens, tags
 
 def _passage_to_sentence_examples(text, p_start, entities, target_type, source_name):
-    """Splits one passage's text into sentence-sized chunks (first on real newlines --
-    e.g. linnaeus's section headers/paragraphs each sit on their own line -- then each
+    """Splits one passage's text into sentence-sized chunks (first on real newlines,
+    e.g. linnaeus's section headers/paragraphs each sit on their own line, then each
     line is further split on sentence boundaries), maps entities onto each chunk by char
     offset, and yields one example per chunk. Keeps every example roughly sentence-sized
     so nothing silently truncates past BERT's subword limit later."""
@@ -406,7 +406,7 @@ def _surname_token(rng):
     # Plain last names dominate LAST_NAMES; real-world surnames are frequently
     # apostrophe'd (O'Connor) or hyphenated compounds of two names (O'Connor-MacLeod).
     # Neither pattern existed anywhere in training, so the model had never seen a NAME
-    # span continue across an apostrophe or an internal hyphen -- confirmed on real test
+    # span continue across an apostrophe or an internal hyphen. Confirmed on real test
     # text where "O'Connor-MacLeod" broke into three disconnected spans, one of them a
     # lone apostrophe mistagged as LOCATION. This composes that pattern ~20% of the time.
     if rng.random() < 0.2:
@@ -491,14 +491,14 @@ def generate_synthetic_phi_examples(n):
 # Source 7b: synthetic comprehensive-PII examples (schema v2).
 #
 # NAME/DATE/LOCATION covered only 3 of the categories a real de-identification tool needs
-# to handle. Every other HIPAA Safe Harbor identifier -- phone, fax, email, SSN, medical
+# to handle. Every other HIPAA Safe Harbor identifier: phone, fax, email, SSN, medical
 # record number, health plan ID, account number, license number, vehicle ID, device ID,
-# URL, IP address, biometric ID, other unique ID -- plus i2b2's PROFESSION/ORGANIZATION
+# URL, IP address, biometric ID, other unique ID, plus i2b2's PROFESSION/ORGANIZATION
 # categories and general-PII-only categories (credit card, username, passport, crypto
 # wallet) had no training exposure and no label at all, so even a SOTA model correctly
 # detecting a phone number couldn't be scored against this dataset. Formats are
 # deliberately varied per category (multiple real-world punctuation/grouping conventions)
-# since recognizing a category across format variation -- not one fixed pattern -- is the
+# since recognizing a category across format variation, not one fixed pattern, is the
 # actual task.
 # =====================================================================
 EMAIL_DOMAINS = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "protonmail.com",
@@ -582,7 +582,7 @@ def _organization_tokens(rng):
     return [rng.choice(ORG_WORDS_1), rng.choice(ORG_WORDS_2)]
 
 def _credit_card_tokens(rng):
-    # Luhn-valid, not just random digits -- confirmed directly that Presidio's credit card
+    # Luhn-valid, not just random digits. Confirmed directly that Presidio's credit card
     # recognizer validates the Luhn checksum, so a plain random-16-digit generator was
     # silently unscoreable: Presidio correctly rejects non-Luhn-valid numbers as malformed,
     # which showed up as a suspicious 5.17% recall that had nothing to do with Presidio's
@@ -714,7 +714,7 @@ AMINO_ACIDS_3 = ["Ala", "Arg", "Asn", "Asp", "Cys", "Gln", "Glu", "Gly", "His", 
                  "Leu", "Lys", "Met", "Phe", "Pro", "Ser", "Thr", "Trp", "Tyr", "Val"]
 AMINO_ACIDS_1 = list("ARNDCQEGHILKMFPSTWYV")
 DNA_BASES = ["A", "C", "G", "T"]
-# Real, well-known named variants -- both with and without the "p." prefix, since both
+# Real, well-known named variants, both with and without the "p." prefix, since both
 # styles appear in real text (e.g. "p.Val600E" and bare "T790M"/"L858R").
 NAMED_VARIANTS = [
     ["Delta"], ["Omicron"], ["Alpha"], ["Beta"], ["Gamma"],
@@ -784,7 +784,7 @@ def generate_synthetic_variant_examples(n):
 # synthetic_variant are short templates that only ever populate ONE category
 # (NAME/DATE/LOCATION, or VARIANT) with nothing else around it. The model has
 # therefore never seen "GENE mentioned inside an ordinary clinical-narrative
-# sentence that also has a patient name/date/location in it" -- which is
+# sentence that also has a patient name/date/location in it", which is
 # exactly the register real test queries use (confirmed directly: "BRAF"
 # and other genes/diseases/chemicals get missed specifically in sentences
 # shaped like clinical notes, even though the same terms are well represented
@@ -806,7 +806,7 @@ DISEASE_NAMES_COMMON = [
     ["Congestive", "Heart", "Failure"], ["Atrial", "Fibrillation"], ["Psoriasis"],
     ["Endometriosis"], ["Hepatitis", "C"], ["Tuberculosis"], ["Meningitis"],
 ]
-# Recently-added, rarer disease terms -- a single vocab-list occurrence wasn't enough
+# Recently-added, rarer disease terms. A single vocab-list occurrence wasn't enough
 # repetition for the model to learn them reliably (confirmed on real test text: "malaria"
 # and "pulmonary histoplasmosis" still missed/fragmented, "differentiation syndrome"
 # truncated to just "differentiation"), same root cause as DRUG_NAMES_HARD/
@@ -817,24 +817,24 @@ DISEASE_NAMES_HARD = [
     ["Differentiation", "Syndrome"], ["QTc", "Prolongation"],
     # "Essential" composed as a generic DISEASE_MODIFIER wasn't enough to overcome its much
     # more common plain-English usage in the real bc5cdr/bionlp corpora ("essential for X
-    # activation") -- confirmed directly: "Essential Hypertension" was missed entirely (both
+    # activation"), confirmed directly: "Essential Hypertension" was missed entirely (both
     # words predicted O, "Essential" at 89.9% and "Hypertension" at 66.8%) even in isolation,
     # not just in context. Adding it as its own fixed compound name gives it direct,
     # unambiguous exposure instead of relying on the modifier composing correctly.
     ["Essential", "Hypertension"], ["Secondary", "Hypertension"],
 ]
-# Real clinical dictation almost always prefixes a disease head noun with one of these --
+# Real clinical dictation almost always prefixes a disease head noun with one of these:
 # "relapsed acute promyelocytic leukemia", "invasive ductal carcinoma", "community-acquired
 # pneumonia". The synthetic DISEASE_NAMES entries above are otherwise always fixed, complete
 # phrases, so the model never saw a modifier prepended to a disease it needs to extend the
-# B-/I-DISEASE span across -- it learns to catch the head noun but truncate the modifier off
+# B-/I-DISEASE span across. It learns to catch the head noun but truncate the modifier off
 # the front. Composing modifiers onto the span here (as part of the same entity) teaches
 # leftward span extension instead of leaving it fixed-phrase-only.
 DISEASE_MODIFIERS = [
     ["acute"], ["chronic"], ["relapsed"], ["recurrent"], ["invasive"], ["metastatic"],
     ["severe"], ["mild"], ["community-acquired"], ["hospital-acquired"], ["progressive"],
     ["localized"], ["advanced"],
-    # Laterality, symptom character, and temporality/causality modifiers -- confirmed
+    # Laterality, symptom character, and temporality/causality modifiers. Confirmed
     # missing directly on fresh real-note text: "bilateral lower extremity edema" ->
     # "lower extremity edema" (bilateral dropped), "crushing substernal chest pain
     # radiating to the left jaw" -> "chest pain" (three descriptive modifiers dropped),
@@ -857,7 +857,7 @@ DRUG_NAMES_COMMON = [
 ]
 # Multi-word / hyphenated-combination names. Even after adding these once, a retrain still
 # truncated them mid-word on real text ("Artemether-lumefan...", "Isavucon...") and still
-# mislabeled "Amphotericin B" as GENE -- a single vocab-list entry only gets sampled a
+# mislabeled "Amphotericin B" as GENE. A single vocab-list entry only gets sampled a
 # handful of times across ~30k training records, nowhere near enough repetition for the
 # model to reliably continue a B-/I-CHEMICAL span across 6-8 rare subword pieces. DRUG_NAMES_HARD
 # is mixed back into the pool at 4x the weight of a common entry (see _drug_tokens) to force
@@ -871,8 +871,9 @@ DRUG_NAMES_HARD = [
 # The weakest category across every held-out evaluation so far (0.75-0.85 precision/recall
 # vs. 0.90+ for most other types), and unlike the other categories, it was never given a
 # vocabulary-expansion pass this session. The real universe of HGNC-registered human gene
-# symbols is ~43,000 -- 22 entries was never going to cover realistic clinical usage. This
-# is still hand-curated (not a full gazetteer import), but broadens coverage across the
+# symbols is ~43,000. The original list of 22 entries was never going to cover realistic
+# clinical usage. This is still hand-curated (not a full gazetteer import), but broadens
+# coverage across the
 # categories a clinical NER tool actually encounters: oncogenes/tumor suppressors,
 # pharmacogenes, cardiac/lipid genes, and monogenic-disease genes.
 GENE_SYMBOLS = [
@@ -903,7 +904,7 @@ CELL_TYPES = [
     ["dendritic", "cell"], ["platelet"], ["fibroblast"], ["red", "blood", "cell"],
 ]
 # Real notes routinely prefix a cell type with a descriptive modifier ("hypersegmented
-# neutrophils", "reactive eosinophils", "immature myeloblasts") -- confirmed on real test
+# neutrophils", "reactive eosinophils", "immature myeloblasts"). Confirmed on real test
 # text where "hypersegmented neutrophils" split into two disconnected CELL spans because
 # no modifier had ever been composed onto a CELL span in training (same root cause as the
 # DISEASE truncation fix below).
@@ -917,7 +918,7 @@ SPECIES_NAMES_COMMON = [
     ["Pseudomonas", "aeruginosa"], ["Salmonella", "enterica"], ["Clostridium", "difficile"],
     ["Helicobacter", "pylori"], ["Neisseria", "meningitidis"], ["Influenza", "A", "virus"],
 ]
-# Fungal, parasitic and additional viral genera -- the list above was 100% bacteria (+1
+# Fungal, parasitic and additional viral genera. The list above was 100% bacteria (+1
 # virus), so any fungal or parasitic pathogen was entirely unseen vocabulary. Confirmed on
 # real test text: "Plasmodium vivax" missed entirely and "Histoplasma capsulatum" fragmented
 # into two disconnected low-confidence spans. A retrain with a single occurrence of each
@@ -934,13 +935,13 @@ SPECIES_NAMES_HARD = [
 ]
 # Kept separate from SPECIES_NAMES_COMMON/HARD: "human"/"mouse" etc. are common nouns, not proper
 # organism names, so they're only used standalone (never as a pathogen "infection by
-# human" filler) -- mixed into a subset of templates deliberately, not the general pool.
+# human" filler), mixed into a subset of templates deliberately, not the general pool.
 GENERIC_SPECIES_WORDS = [["human"], ["mouse"], ["Homo", "sapiens"], ["murine"]]
 def _disease_tokens(rng):
     pool = DISEASE_NAMES_COMMON + DISEASE_NAMES_HARD * 4
     tokens = list(rng.choice(pool))
     # Real dictation often stacks two or even three modifiers ("crushing substernal chest
-    # pain", "relapsed acute promyelocytic leukemia") -- confirmed directly on fresh,
+    # pain", "relapsed acute promyelocytic leukemia"). Confirmed directly on fresh,
     # unrelated real clinical text where 1-3 descriptive modifiers were dropped from the
     # DISEASE span every time ("bilateral lower extremity edema" -> "lower extremity
     # edema", "Essential Hypertension" -> "Hypertension" at 49% confidence). Bumped from a
@@ -960,7 +961,7 @@ def _disease_tokens(rng):
     return tokens
 
 def _drug_tokens(rng):
-    # DRUG_NAMES_HARD (multi-word/hyphenated) oversampled 4x -- see definition comment.
+    # DRUG_NAMES_HARD (multi-word/hyphenated) oversampled 4x, see definition comment.
     pool = DRUG_NAMES_COMMON + DRUG_NAMES_HARD * 4
     return list(rng.choice(pool))
 
@@ -974,7 +975,7 @@ def _cell_tokens(rng):
     return tokens
 
 def _species_tokens(rng):
-    # SPECIES_NAMES_HARD (fungi/parasites/rarer viruses) oversampled 4x -- see definition
+    # SPECIES_NAMES_HARD (fungi/parasites/rarer viruses) oversampled 4x, see definition
     # comment; GENERIC_SPECIES_WORDS ("human"/"mouse") mixed in at low frequency as before.
     pool = SPECIES_NAMES_COMMON + SPECIES_NAMES_HARD * 4
     if rng.random() < 0.3:
@@ -1042,11 +1043,11 @@ COMBINED_SENTENCE_TEMPLATES = [
      "CHEMICAL", ".", "NAME", "was", "seen", "at", "LOC", "for", "follow-up", "."],
     # Negation / hedging / family-history phrasing. Note: this teaches the model to still
     # correctly find and type the entity SPAN when it appears in these real, extremely
-    # common clinical-note contexts -- it does NOT teach assertion status (negated vs.
+    # common clinical-note contexts. It does NOT teach assertion status (negated vs.
     # affirmed vs. family-history) since that's a different task (see NegEx-style assertion
     # classification) entirely out of scope for a plain span-tagging NER model. Without
     # these patterns, nothing in training ever put a DISEASE/CHEMICAL mention after "no
-    # evidence of", "denied", "rule out", or "family history of" -- real notes are full of
+    # evidence of", "denied", "rule out", or "family history of". Real notes are full of
     # exactly this phrasing.
     ["No", "evidence", "of", "DISEASE", "was", "found", "on", "imaging", ".", "Follow-up",
      "scheduled", "at", "LOC", "on", "DATE", "."],
@@ -1061,7 +1062,7 @@ COMBINED_SENTENCE_TEMPLATES = [
     ["The", "mother", "of", "NAME", "was", "diagnosed", "with", "DISEASE", ";", "genetic",
      "counseling", "regarding", "GENE", "was", "recommended", "."],
     # Comma-separated medication list ("Current Medications: X 1000mg BID, Y 20mg daily, Z
-    # 40mg daily") -- confirmed directly on real SOAP-note text that this exact format
+    # 40mg daily"). Confirmed directly on real SOAP-note text that this exact format
     # causes the FIRST TWO drugs in a three-item list to be missed entirely (tagged O at
     # 97%+ confidence), with only the LAST item caught. Every other CHEMICAL template
     # narrates one drug at a time in prose ("was prescribed X"), never several in a row
@@ -1073,7 +1074,7 @@ COMBINED_SENTENCE_TEMPLATES = [
     ["NAME", "was", "started", "on", "CHEMICAL", "DOSE", ",", "CHEMICAL", "DOSE", ",", "and",
      "CHEMICAL", "DOSE", "at", "LOC", "."],
     # Two DISEASE mentions joined by "and" in the same clause ("Shortness of breath and
-    # bilateral lower extremity edema") -- every other DISEASE template has exactly one
+    # bilateral lower extremity edema"). Every other DISEASE template has exactly one
     # disease per sentence, so a second disease immediately following "and" (rather than
     # after a full-stop) was never modeled; confirmed the first disease correctly extends
     # but the SECOND one loses its lead-in modifier in exactly this construction.
@@ -1087,17 +1088,17 @@ def _build_combined_scenario_example(rng):
             # A bare small integer that must stay O even directly adjacent to a DISEASE/
             # GENE/VARIANT mention ("exon 9", "Grade 3 anemia"). No prior template ever put
             # a number next to an entity without it BEING the entity, so the model had zero
-            # negative signal here -- confirmed on real test text where a bare "9" after
+            # negative signal here. Confirmed on real test text where a bare "9" after
             # "exon" got tagged B-VARIANT and a bare "3" after "Grade" got tagged B-DISEASE.
             slot_tokens = [str(rng.randint(1, 30))]
             slot_labels = ["O"]
         elif slot == "DOSE":
-            # A dosage+frequency pair that must stay O directly after a CHEMICAL mention --
+            # A dosage+frequency pair that must stay O directly after a CHEMICAL mention,
             # confirmed missing on real test text: a "Drug DOSEmg FREQ, Drug DOSEmg FREQ,
             # Drug DOSEmg FREQ" medication list (e.g. "Metformin 1000mg BID, Lisinopril
             # 20mg daily, Atorvastatin 40mg daily") caused the FIRST TWO drugs in the list
             # to be missed entirely (tagged O at 97%+ confidence) while only the THIRD was
-            # caught -- every prior CHEMICAL template narrates one drug at a time in prose
+            # caught. Every prior CHEMICAL template narrates one drug at a time in prose
             # ("was prescribed X"), never a comma-separated dosage list, so the model had
             # no exposure to "drug name immediately followed by a dose token" at all.
             dose_num = rng.choice([5, 10, 20, 25, 40, 50, 75, 81, 100, 250, 325, 500, 650, 1000])
@@ -1125,16 +1126,16 @@ def generate_combined_scenario_examples(n):
 # Vocabulary-holdout generalization probe.
 #
 # Every other test-split record is, structurally, drawn from the SAME finite
-# vocabulary lists as train -- train and test differ only in which combination of
+# vocabulary lists as train. Train and test differ only in which combination of
 # terms/templates landed in which hash bucket, not in whether the vocabulary itself was
 # ever seen. That means held-out-set F1 measures "does the model handle a new sentence
-# built from familiar words," not "does it generalize to genuinely unseen clinical terms" --
-# a real methodological gap for any claim about generalization.
+# built from familiar words," not "does it generalize to genuinely unseen clinical terms."
+# That's a real methodological gap for any claim about generalization.
 #
 # These four lists are used ONLY here, deliberately excluded from GENE_SYMBOLS/
 # DISEASE_NAMES_*/DRUG_NAMES_*/SPECIES_NAMES_* above, and every example built from them is
-# force-routed to the test split regardless of its hash bucket (see split_for() in main())
-# -- so the model never sees these specific terms during training, and test-set
+# force-routed to the test split regardless of its hash bucket (see split_for() in main()),
+# so the model never sees these specific terms during training, and test-set
 # performance on them is a genuine unseen-vocabulary measurement.
 # =====================================================================
 GENE_SYMBOLS_HELDOUT = [
@@ -1191,7 +1192,7 @@ def generate_vocab_holdout_examples(n):
     return [_build_vocab_holdout_example(rng) for _ in range(n)]
 
 # =====================================================================
-# Source 9: i2b2.jsonl (local file) -- n2c2 2018 Track 2 medication/ADE
+# Source 9: i2b2.jsonl (local file), n2c2 2018 Track 2 medication/ADE
 # relation-extraction data, reformatted as instruction/context/response
 # rows. This is real clinical-note text (not PubMed abstracts), which
 # directly helps the domain-mismatch problem. Two things are extracted:
@@ -1200,7 +1201,7 @@ def generate_vocab_holdout_examples(n):
 #      the other relation types' subjects are dosage attributes like
 #      strength/route/frequency, not in our schema, so left as "O").
 #   2. MIMIC-style de-identification placeholders like [**Hospital1 18**]
-#      or [**2116-1-31**] -- the real PHI value is already redacted before
+#      or [**2116-1-31**]. The real PHI value is already redacted before
 #      release, but the bracket content still encodes which category it
 #      was. Each placeholder is replaced with a realistic synthetic value
 #      of the matching category (NAME/DATE/LOCATION), tagged accordingly;
@@ -1216,12 +1217,12 @@ I2B2_TAG_RE = re.compile(r"<<(SUBJECT|OBJECT)>>(.*?)<</\1>>")
 NEUTRAL_FILLERS = ["12345", "555-0142", "42", "Acme Corp"]
 
 # The single largest bracket bucket (~1500 occurrences) has no descriptive text at all,
-# just bare digit/dash/slash content -- but inspection of the actual raw values shows
+# just bare digit/dash/slash content, but inspection of the actual raw values shows
 # these are overwhelmingly MM-DD or YYYY-M-D date shorthand (e.g. "3-22", "2182-4-25"),
 # not IDs or ages, which almost always carry a descriptive label like "Age over #" or
 # "Numeric Identifier #" instead of appearing bare. A bare number with a "-" or "/"
 # separator and 2-3 numeric parts is classified as DATE; a lone number with no separator
-# stays unmapped (genuinely ambiguous -- could be an age, an ID, ...).
+# stays unmapped (genuinely ambiguous, could be an age, an ID, ...).
 _BARE_DATE_RE = re.compile(r"^\d{1,4}[-/]\d{1,2}([-/]\d{1,4})?$")
 
 def _bracket_category(content):
@@ -1271,7 +1272,7 @@ def fetch_i2b2_examples():
             context = rec.get("context", "")
 
             # Keep only the annotated prefix through the closing OBJECT tag (or SUBJECT
-            # if no OBJECT tag) -- everything after that is a redundant plain-text repeat
+            # if no OBJECT tag). Everything after that is a redundant plain-text repeat
             # of the same content baked into how this field was constructed.
             m_obj_close = re.search(r"<</OBJECT>>", context)
             m_subj_close = re.search(r"<</SUBJECT>>", context)
@@ -1350,10 +1351,10 @@ def fetch_i2b2_examples():
     return examples
 
 # Some sources (BioRED in particular) have I-X immediately after O in their own raw
-# annotations -- an upstream artifact around tokens split by punctuation inside a single
+# annotations, an upstream artifact around tokens split by punctuation inside a single
 # entity mention (e.g. a chemical formula broken up by parentheses). That's invalid BIO,
 # so any orphaned I-X (not preceded by B-X or I-X of the same type) is promoted to B-X.
-# This never discards entity information, it only corrects the boundary marker.
+# This never discards entity information; it only corrects the boundary marker.
 def repair_bio_tags(tag_ids):
     fixed = list(tag_ids)
     changed = False
@@ -1376,7 +1377,7 @@ def repair_bio_tags(tag_ids):
 # capped around ~1-2k even with synthetic augmentation), so exact parity
 # isn't achievable, but this brings every category to the same target
 # ceiling wherever supply allows, keeping an example only while at least
-# one of the entity types it contains is still under target -- so a
+# one of the entity types it contains is still under target, so a
 # sentence carrying both an over-target GENE and an under-target VARIANT
 # still gets kept for the VARIANT's sake.
 # =====================================================================
@@ -1441,8 +1442,8 @@ def main():
         SYNTHETIC_PHI_EXAMPLES if MAX_EXAMPLES <= 0 else min(SYNTHETIC_PHI_EXAMPLES, MAX_EXAMPLES)
     )
     # VARIANT has the thinnest real supply of any category (tmvar_v2 tops out around
-    # 1-1.5k spans), and was still the smallest final category after the last rebuild --
-    # boosted well past the others here so it can comfortably hit a higher balance target.
+    # 1-1.5k spans), and was still the smallest final category after the last rebuild.
+    # It's boosted well past the others here so it can comfortably hit a higher balance target.
     SYNTHETIC_VARIANT_EXAMPLES = int(os.environ.get("PHI_SYNTHETIC_VARIANT_EXAMPLES", "14000") or 0)
     synthetic_variant_examples = generate_synthetic_variant_examples(
         SYNTHETIC_VARIANT_EXAMPLES if MAX_EXAMPLES <= 0 else min(SYNTHETIC_VARIANT_EXAMPLES, MAX_EXAMPLES)
@@ -1455,12 +1456,12 @@ def main():
     vocab_holdout_examples = generate_vocab_holdout_examples(
         VOCAB_HOLDOUT_EXAMPLES if MAX_EXAMPLES <= 0 else min(VOCAB_HOLDOUT_EXAMPLES, MAX_EXAMPLES)
     )
-    # No real corpus source has any exposure to phone/SSN/MRN/IP/credit-card/etc. at all --
-    # this is the ONLY source for 20 of the 29 categories. 15 templates share these slots
+    # No real corpus source has any exposure to phone/SSN/MRN/IP/credit-card/etc. at all.
+    # This is the ONLY source for 20 of the 29 categories. 15 templates share these slots
     # unevenly (some categories appear in only 1-2 templates), so a large count is needed
     # for even the rarest categories (BIOMETRIC_ID, CREDIT_CARD, PASSPORT_NUMBER) to get
-    # meaningful exposure. These are fixed-format numeric/alphanumeric patterns, though --
-    # a much easier recognition task than free-text clinical entities -- so they don't need
+    # meaningful exposure. These are fixed-format numeric/alphanumeric patterns though
+    # (a much easier recognition task than free-text clinical entities), so they don't need
     # to hit the same 8000-span balance target as DISEASE/CHEMICAL to be well-learned.
     SYNTHETIC_PII_EXAMPLES = int(os.environ.get("PHI_SYNTHETIC_PII_EXAMPLES", "20000") or 0)
     synthetic_pii_examples = generate_pii_examples(
@@ -1555,7 +1556,7 @@ def main():
     # A handful of rows have corrupted char-offset alignment inherited from the source
     # (a bare quote mark tagged as an entity, elsewhere in the same row a plain word
     # tagged as an entity). The corruption isn't isolated to one token, so the whole row
-    # is dropped rather than patched -- any entity span with no alphanumeric character
+    # is dropped rather than patched. Any entity span with no alphanumeric character
     # at all is treated as a signal the row's alignment is broken.
     def _has_only_punct_entity(tokens, tags):
         cur_start = None
@@ -1602,15 +1603,15 @@ def main():
     # bionlp2004's own original annotations occasionally tag a bare amino-acid-position
     # range as B-protein instead of the actual protein name next to it (confirmed against
     # the raw source). A standalone number is never a real GENE/DISEASE/CHEMICAL/CELL/
-    # SPECIES mention, so neutralize just that span to "O". VARIANT and DATE are excluded --
+    # SPECIES mention, so neutralize just that span to "O". VARIANT and DATE are excluded:
     # numeric-looking variant notation (positions, rsIDs) and ISO/slash-format dates
     # (e.g. "2002-09-18", "09/11/1991") are both legitimately all-digits-and-punctuation.
     # Schema-v2 identifier categories are legitimately digits-and-punctuation too (that's
-    # the whole point of most of them) -- confirmed this filter was silently clearing over
+    # the whole point of most of them). Confirmed this filter was silently clearing over
     # 12,000 spans on the first run with the new schema, wiping out AGE ("45"), SSN
     # ("482-19-4920"), ACCOUNT_NUMBER, plain-format MEDICAL_RECORD_NUMBER, IP_ADDRESS
     # ("192.168.1.45"), and dash/dot-formatted PHONE/FAX/CREDIT_CARD before they ever
-    # reached the balancer -- exactly the categories this schema expansion exists for.
+    # reached the balancer, exactly the categories this schema expansion exists for.
     _PURELY_NUMERIC_RE = re.compile(r"^[\d.,\-/]+$")
     _NUMERIC_EXEMPT_TYPES = {
         "VARIANT", "DATE", "AGE", "PHONE", "FAX", "SSN", "MEDICAL_RECORD_NUMBER",
@@ -1638,7 +1639,7 @@ def main():
 
     # Sentences ending mid-clause on a bare function word, or mid-word on a trailing
     # hyphen, or opening an unclosed parenthetical within the last few tokens (e.g.
-    # "...( Fig .", "...( p < 0 .") are truncated fragments, not complete sentences --
+    # "...( Fig .", "...( p < 0 .") are truncated fragments, not complete sentences,
     # confirmed by direct inspection against multiple sources. A 4+ run of an identical
     # short non-hyphen token (e.g. "NA NA NA NA NA") is a data-table dump, not prose.
     _ENDING_FUNCTION_WORDS = {
@@ -1684,7 +1685,7 @@ def main():
 
     # Some source corpora share underlying PubMed abstracts, and each source only
     # annotates its own entity types, so the exact same sentence can show up multiple
-    # times with different -- sometimes contradictory -- label sets. Identical input
+    # times with different, sometimes contradictory, label sets. Identical input
     # mapped to different labels is actively harmful for fine-tuning, so dedupe by
     # tokens ALONE, keeping the single most complete (most non-"O" tags) annotation.
     best_by_tokens = {}
@@ -1720,10 +1721,10 @@ def main():
 
     # A deterministic hash-of-tokens split (rather than each source's own train/valid/test
     # boundaries) so identical sentences that appear under different source splits always
-    # land in the same partition -- otherwise deduping across sources could leak the same
+    # land in the same partition. Otherwise deduping across sources could leak the same
     # sentence into both train and test.
     # synthetic_vocab_holdout records are always force-routed to test regardless of hash
-    # bucket -- these use gene/disease/drug/species terms deliberately excluded from every
+    # bucket. These use gene/disease/drug/species terms deliberately excluded from every
     # other generator, so the ONLY way they end up in train is if this override is skipped.
     # That's what makes their test-split score a genuine unseen-vocabulary measurement
     # rather than "a new combination of already-seen words."

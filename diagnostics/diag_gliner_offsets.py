@@ -4,9 +4,9 @@ Diagnostic: GLiNER-biomed showed 0% STRICT match on URL (tp=0/1322) and BIOMETRI
 
 FIRST ATTEMPT at this diagnostic prompted GLiNER with only ["url", "biometric identifier"]
 and got a contradictory result: BIOMETRIC_ID's gap turned out to be real (GLiNER correctly
-skips the descriptive prefix, e.g. gold "voiceprint ID VP-8629" vs GLiNER's "VP-8629" --
-genuine annotation-scope difference, not a bug), but URL scored a perfect 12/12 exact
-matches in that test -- flatly contradicting the full run's tp=0/1322. The two runs weren't
+skips the descriptive prefix, e.g. gold "voiceprint ID VP-8629" vs GLiNER's "VP-8629",
+a genuine annotation-scope difference, not a bug), but URL scored a perfect 12/12 exact
+matches in that test, flatly contradicting the full run's tp=0/1322. The two runs weren't
 comparable: the real benchmark script prompts GLiNER with ALL 30 schema labels
 simultaneously, not just 2, and GLiNER's predicted boundaries can plausibly shift depending
 on what else is in the label set. This version uses the EXACT SAME 30-label list as
@@ -22,7 +22,7 @@ DATASET_PATH = "/content/drive/MyDrive/Benchmark/benchmark_clinical_phi.jsonl"
 MAX_EXAMPLES = int(os.environ.get("SOTA_EVAL_MAX_RECORDS", "20") or 20)
 SCORE_THRESHOLD = float(os.environ.get("SOTA_EVAL_SCORE_THRESHOLD", "0.5"))
 
-# Identical to GLINER_LABEL_TO_SCHEMA in sota_eval_gliner_biomed.py -- must match exactly,
+# Identical to GLINER_LABEL_TO_SCHEMA in sota_eval_gliner_biomed.py. Must match exactly,
 # since the whole point is reproducing the real script's exact prompt conditions.
 GLINER_LABEL_TO_SCHEMA = {
     "person name": "NAME", "date": "DATE", "location": "LOCATION", "age": "AGE",

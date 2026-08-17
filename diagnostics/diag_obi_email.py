@@ -100,7 +100,7 @@ for rec in iter_records(DATASET_PATH):
         else:
             print("  pred : (no EMAIL-typed prediction overlapped this gold span)")
         # Show a bit of surrounding context so we can see what's right before/after the
-        # email in the sentence -- useful if the mismatch is a punctuation/whitespace issue.
+        # email in the sentence, useful if the mismatch is a punctuation/whitespace issue.
         ctx_start = max(0, g["start"] - 15)
         ctx_end = min(len(text), g["end"] + 15)
         print(f"  ctx  : ...{text[ctx_start:g['start']]}[{text[g['start']:g['end']]}]{text[g['end']:ctx_end]}...")

@@ -2,7 +2,7 @@
 Converts merged_clinical_phi.{train,validation,test}.jsonl (our internal tokens+BIO format)
 into a model-agnostic benchmark format: raw text + character-offset gold entity spans.
 
-This is the actual deliverable for testing SOTA PII/PHI models -- almost every model
+This is the actual deliverable for testing SOTA PII/PHI models. Almost every model
 (transformer-based or spaCy-based) takes raw text as input and does its own internal
 tokenization, so shipping our own token boundaries would be useless to them. Any model can
 be run on the `text` field and scored against `entities` regardless of its own tokenizer.
@@ -46,7 +46,7 @@ def convert(path):
             # back out to that exact token? If this holds for every token in every record,
             # the offset bookkeeping is provably correct, and every entity span built from
             # consecutive token offsets (start of first token, end of last token) is
-            # therefore correct too -- checking the entity span's own text against
+            # therefore correct too. Checking the entity span's own text against
             # text[start:end] would be circular, since extract_gold_spans derives "text"
             # from that exact slice by construction.
             for tok, (s, e) in zip(tokens, offsets):
@@ -87,10 +87,10 @@ total_entities = sum(len(r["entities"]) for r in all_records)
 print(f"\nToken-offset correctness check: {token_offset_checks} tokens checked, "
       f"{token_offset_mismatches} mismatches.")
 if token_offset_mismatches:
-    print("WARNING: offset bookkeeping is broken -- do NOT use this export until fixed.")
+    print("WARNING: offset bookkeeping is broken. Do NOT use this export until fixed.")
     for tok, got, text in mismatch_examples:
         print(f"  expected {tok!r}, got {got!r}  in: {text[:100]!r}")
 else:
-    print("All token offsets verified correct -- every entity span's character "
+    print("All token offsets verified correct. Every entity span's character "
           "boundaries are provably exact.")
 print(f"Total entity spans across combined benchmark: {total_entities}")
