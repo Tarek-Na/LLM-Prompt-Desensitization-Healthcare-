@@ -5,47 +5,6 @@
 *
 !.gitignore
 !README.md
-!RESULTS_SUMMARY.md
-
-# --- dataset/: generation pipeline, schema, and the benchmark itself ---
-!dataset/
-!dataset/build_dataset.py
-!dataset/export_benchmark.py
-!dataset/validate_dataset.py
-!dataset/labels.json
-!dataset/benchmark_clinical_phi.jsonl
-!dataset/benchmark_clinical_phi.train.jsonl
-!dataset/benchmark_clinical_phi.test.jsonl
-!dataset/benchmark_clinical_phi.validation.jsonl
-
-# --- evaluation/: shared scoring infra + one script per in-scope model ---
-!evaluation/
-!evaluation/sota_eval_common.py
-!evaluation/sota_eval_presidio.py
-!evaluation/sota_eval_obi_i2b2.py
-!evaluation/sota_eval_stanford_deid.py
-!evaluation/sota_eval_spacy.py
-!evaluation/sota_eval_gliner_biomed.py
-!evaluation/sota_eval_clinical_ai_apollo.py
-!evaluation/sota_eval_biomedical_ner_all.py
-
-# --- diagnostics/: root-cause scripts for specific findings + raw output ---
-!diagnostics/
-!diagnostics/diag_apollo_offsets.py
-!diagnostics/diag_apollo_age_disease.py
-!diagnostics/diag_d4data_date.py
-!diagnostics/diag_gliner_offsets.py
-!diagnostics/diag_obi_email.py
-
-# --- confusion_matrices/: one PNG per in-scope model ---
-!confusion_matrices/
-!confusion_matrices/confusion_matrix_microsoft_presidio.png
-!confusion_matrices/confusion_matrix_obi_deid_roberta_i2b2.png
-!confusion_matrices/confusion_matrix_stanfordaimi_stanford_deidentifier_base.png
-!confusion_matrices/confusion_matrix_spacy_en_core_web_sm.png
-!confusion_matrices/confusion_matrix_ihor_gliner_biomed_base_v1_0.png
-!confusion_matrices/confusion_matrix_clinical_ai_apollo_medical_ner.png
-!confusion_matrices/confusion_matrix_d4data_biomedical_ner_all.png
 
 # --- LoRA clinical PHI/NER model: train/test/raw-inference code, dataset ---
 # --- construction lineage, eval scripts, the v16 dataset + labels it was ---
@@ -59,6 +18,7 @@
 !lora_eval_cadec.py
 !lora_eval_conll2003.py
 !lora_eval_osiris.py
+!dataset/
 !dataset/build_lora_dataset_v10.py
 !dataset/build_lora_dataset_v11.py
 !dataset/build_lora_dataset_v12.py
@@ -69,6 +29,7 @@
 !merged_clinical_phi_v16.train.jsonl
 !merged_clinical_phi_v16.validation.jsonl
 !merged_clinical_phi_v16.test.jsonl
+!confusion_matrices/
 !confusion_matrices/confusion_matrix_lora_deberta_on_bc2gm.png
 !confusion_matrices/confusion_matrix_lora_deberta_on_bc4chemd.png
 !confusion_matrices/confusion_matrix_lora_deberta_on_cadec.png
