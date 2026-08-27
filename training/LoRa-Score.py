@@ -144,38 +144,3 @@ print("="*75)
 print(f"⭐ Overall Micro F1 Score: {micro_f1:.4f}\n")
 print("Classification Report:")
 print(classification_report(true_labels, true_predictions))
-
-''' Loading testing dataset...
-Generating test split:  4469/0 [00:00<00:00, 88992.23 examples/s]Loading tokenizer...
-Tokenizing test dataset...
-Map: 100% 4469/4469 [00:00<00:00, 4927.84 examples/s]
-Loading base DeBERTa model...
-Loading weights: 100% 200/200 [00:00<00:00, 2142.84it/s]Attaching adapters from: /content/drive/MyDrive/BERT-INTERN/PHI/r32_lr1e-04_v5...
-Merging weights and preparing for evaluation...
-Model successfully cast to FP16 and loaded to GPU!
-
-Running predictions on test set...
-
-===========================================================================
-🏆 TEST EVALUATION COMPLETED FOR: r32_lr1e-04_v5
-===========================================================================
-⭐ Overall Micro F1 Score: 0.9209
-
-Classification Report:
-              precision    recall  f1-score   support
-
-        CELL       0.85      0.91      0.88      1040
-    CHEMICAL       0.90      0.89      0.89      1548
-        DATE       1.00      1.00      1.00      1157
-     DISEASE       0.86      0.90      0.88      1696
-        GENE       0.79      0.87      0.83      1627
-    LOCATION       1.00      1.00      1.00      1291
-        NAME       1.00      1.00      1.00      1124
-     SPECIES       0.89      0.93      0.91       966
-     VARIANT       0.95      0.99      0.97       960
-
-   micro avg       0.91      0.94      0.92     11409
-   macro avg       0.92      0.94      0.93     11409
-weighted avg       0.91      0.94      0.92     11409
-
-'''

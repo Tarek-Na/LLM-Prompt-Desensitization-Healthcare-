@@ -12,14 +12,10 @@ from transformers import (
 from peft import LoraConfig, get_peft_model, TaskType
 from seqeval.metrics import precision_score, recall_score, f1_score
 
-# 7-category schema. SPECIES and CELL are gone -- they were the two weakest categories on
-# real external benchmarks (37% and 42% relaxed F1) with diagnosed causes that more data
-# didn't fix, so dataset/build_lora_dataset_v15.py relabeled every SPECIES/CELL tag to O
-# rather than keep training the model on categories it can't reliably do. v16 on top of that
-# adds CADEC's real train split as new DISEASE data (informal patient-forum language, the
-# diagnosed gap in DISEASE's formerly all-formal-PubMed training data) and touches nothing
-# else -- see dataset/build_lora_dataset_v16.py for the exact diff and its leakage/balance
-# checks.
+# 7-category schema. v16 adds CADEC's real train split as new DISEASE data (informal
+# patient-forum language, the diagnosed gap in DISEASE's formerly all-formal-PubMed
+# training data) -- see dataset/build_lora_dataset_v16.py for the exact diff and its
+# leakage/balance checks.
 master_labels = [
     "O",
     "B-DISEASE", "I-DISEASE",

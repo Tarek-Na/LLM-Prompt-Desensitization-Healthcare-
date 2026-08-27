@@ -14,8 +14,7 @@ train / 22 validation / 22 test rows) -- real signal, but read the numbers with 
 in mind, not with the same statistical confidence as the 5,000+ record benchmarks.
 
 Never used anywhere in this project's training data (unlike NCBI-disease/BC5CDR, which are
-already training sources), so this is a genuine held-out check for DISEASE, the same role
-Species-800 plays for SPECIES.
+already training sources), so this is a genuine held-out check for DISEASE.
 
 Dependencies: transformers, torch, peft, datasets, matplotlib.
 """

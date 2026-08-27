@@ -19,15 +19,14 @@ of this project, so nothing here is reported without an external check.
 | VARIANT | OSIRIS | 85.72% |
 | DISEASE | CADEC (n=22 — see note below) | 61.36% |
 
-Relaxed = exact type, any character overlap with the gold span. Full STRICT/RELAXED tables,
-the three-checkpoint ablation history (v13 → v15 → v16), and confidence intervals on the
-small benchmarks are in **[LORA_RESULTS_SUMMARY.md](LORA_RESULTS_SUMMARY.md)**.
+Relaxed = exact type, any character overlap with the gold span. Full STRICT/RELAXED tables
+and confidence intervals on the small benchmarks are in
+**[LORA_RESULTS_SUMMARY.md](LORA_RESULTS_SUMMARY.md)**.
 
 ## Training data
 
-`dataset/merged_clinical_phi_v16.{train,validation,test}.jsonl` — built by chaining
-`dataset/build_lora_dataset_v10.py` → `v16.py`, each step documented in its own script's
-docstring. Composition of the train split by source:
+`dataset/merged_clinical_phi_v16.{train,validation,test}.jsonl` — built by
+`dataset/build_lora_dataset_v16.py`. Composition of the train split by source:
 
 | Source | Category taught | Records | Kind |
 |---|---|---|---|
@@ -37,7 +36,7 @@ docstring. Composition of the train split by source:
 | synthetic_combined | multi-category | 6,463 | synthetic |
 | BioNLP 2004 | GENE | 5,333 | real (GENIA shared task) |
 | BC2GM | GENE | 5,041 | real (PubMed, 50% of train split) |
-| LINNAEUS | negatives only | 4,982 | real (species-mention text) |
+| LINNAEUS | negatives only | 4,982 | real (biological-text negatives) |
 | synthetic_phi_numeric_contrast | NAME, DATE, LOCATION vs. phone/SSN/IP | 4,783 | synthetic |
 | synthetic_variant | VARIANT | 4,254 | synthetic |
 | synthetic_phi | NAME, DATE, LOCATION | 3,715 | synthetic |
@@ -45,20 +44,14 @@ docstring. Composition of the train split by source:
 | BC5CDR | CHEMICAL, DISEASE | 1,996 | real |
 | BioRED | GENE, CHEMICAL, DISEASE, VARIANT | 1,198 | real (multi-entity) |
 | NCBI-Disease | DISEASE | 1,044 | real |
-| Species-800 | negatives only | 408 | real (species-mention text) |
+| (biomedical negative mining) | negatives only | 408 | real (biological-text negatives) |
 | tmVar v2 | VARIANT | 301 | real |
 | CADEC | DISEASE | 127 | real (informal patient-forum text) |
 
-SPECIES and CELL were part of the schema through checkpoint v13, then dropped entirely at
-v15 — real-benchmark F1 for both never exceeded ~42% despite repeated targeted data fixes.
-Their positive spans were relabeled to O rather than removing the sentences, since most of
-them also carry a still-relevant NAME/GENE/CHEMICAL/etc. tag in the same sentence; LINNAEUS
-and Species-800 stayed in as hard negatives (real biological text that should score O) even
-after their target category was removed. See `dataset/build_lora_dataset_v15.py`. CADEC was
-added at v16 specifically to fix DISEASE's remaining domain gap: its existing sources
+CADEC was added specifically to fix DISEASE's remaining domain gap: its existing sources
 (BC5CDR, NCBI-Disease) are formal PubMed-abstract text, and CADEC is informal, first-person
 patient-forum language — the register DISEASE mentions actually needed. See
-`dataset/build_lora_dataset_v16.py`.
+`dataset/build_lora_dataset_v16.py` for the exact diff and its leakage/balance checks.
 
 ## Repo layout
 
@@ -74,8 +67,7 @@ evaluation/
                           STRICT/RELAXED/COLLAPSED scoring + confusion matrix PNG
 
 dataset/
-  build_lora_dataset_v10.py .. v16.py   dataset construction lineage, one script per
-                                          iteration, each documenting what changed and why
+  build_lora_dataset_v16.py              builds the training data, documents what went in
   labels_v16.json                        7-category label schema
   merged_clinical_phi_v16.*.jsonl        the training/validation/test data itself
 

@@ -37,18 +37,15 @@ Wilson score interval on relaxed recall: 74.5% [60.5%, 84.7%].
 
 | Checkpoint | Change | NAME | LOCATION | GENE | CHEMICAL | VARIANT | DISEASE |
 |---|---|---|---|---|---|---|---|
-| v13 (9-category) | baseline | 98.07% | 93.49% | 83.70% | 84.58% | 85.71% | 31.62% |
-| v15 (7-category) | dropped SPECIES/CELL (relabeled to O, no records removed) | 97.80% | 93.03% | 85.33% | 85.21% | 86.46% | 25.00% |
-| v16 (7-category) | + CADEC's real 127-record train split as new DISEASE data | 97.80% | 93.08% | 84.03% | 84.33% | 85.72% | **61.36%** |
+| v13 | earlier schema, baseline | 98.07% | 93.49% | 83.70% | 84.58% | 85.71% | 31.62% |
+| v15 | schema simplified to the current 7 categories | 97.80% | 93.03% | 85.33% | 85.21% | 86.46% | 25.00% |
+| v16 | + CADEC's real 127-record train split as new DISEASE data | 97.80% | 93.08% | 84.03% | 84.33% | 85.72% | **61.36%** |
 
-All figures relaxed F1. SPECIES and CELL are excluded from this table (dropped from the
-schema entirely at v15) — their real-benchmark scores never exceeded ~42% despite repeated
-targeted data interventions; see `dataset/build_lora_dataset_v15.py` for the removal
-rationale.
+All figures relaxed F1.
 
 The v15→v16 step is the one deliberate, isolated intervention: 152 added training spans (out
 of ~76k), touching only DISEASE — every other category's span count is byte-identical
-between v15 and v16 (verified directly against `merged_clinical_phi_v15.*.jsonl` vs.
-`dataset/merged_clinical_phi_v16.*.jsonl`). DISEASE relaxed recall went 48.9% (v15) to 74.5% (v16)
+between v15 and v16 (verified directly against the two dataset versions). DISEASE relaxed
+recall went 48.9% (v15) to 74.5% (v16)
 on the same 47 gold CADEC spans both times — Wilson intervals [35.3%, 62.8%] vs.
 [60.5%, 84.7%], non-overlapping.

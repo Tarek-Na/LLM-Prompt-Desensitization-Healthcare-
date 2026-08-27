@@ -16,11 +16,9 @@ printout of native_label_names is what to check if a future revision of this mir
 out to carry more than one entity family after all.
 
 Model loading mirrors LoRa-Score.py/LoRa-Raw.py exactly: base DeBERTa model + PEFT adapter,
-merged and unloaded. ADAPTER_PATH below points at "r64_alpha128_lr5e-04_v16data_7cat", the
-7-category checkpoint trained on merged_clinical_phi_v16 (see
-dataset/build_lora_dataset_v16.py -- v15 with SPECIES/CELL already dropped, plus CADEC's
-real train split added as new DISEASE data). Change ADAPTER_PATH to review a different
-checkpoint instead.
+merged and unloaded. ADAPTER_PATH below points at the v16 checkpoint, the 7-category model
+trained on merged_clinical_phi_v16 (see dataset/build_lora_dataset_v16.py for exactly what
+went into it). Change ADAPTER_PATH to review a different checkpoint instead.
 
 Dependencies: transformers, torch, peft, datasets, matplotlib.
 """

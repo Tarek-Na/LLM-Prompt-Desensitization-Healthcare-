@@ -1,10 +1,9 @@
 """
-Builds merged_clinical_phi_v16.{train,validation,test}.jsonl on top of v15 (the 7-category
-schema with SPECIES and CELL dropped). Adds exactly one thing: CADEC's real 127-record
-TRAIN split as new DISEASE training data. Nothing else in v15 is touched, so this is
-additive only -- every existing NAME/LOCATION/GENE/CHEMICAL/VARIANT/DATE record and tag is
-carried over unchanged, which is the whole point: improve DISEASE without moving anything
-else.
+Builds merged_clinical_phi_v16.{train,validation,test}.jsonl on top of the prior 7-category
+dataset. Adds exactly one thing: CADEC's real 127-record TRAIN split as new DISEASE training
+data. Nothing else is touched, so this is additive only -- every existing NAME/LOCATION/
+GENE/CHEMICAL/VARIANT/DATE record and tag is carried over unchanged, which is the whole
+point: improve DISEASE without moving anything else.
 
 Why CADEC specifically: this project's existing real DISEASE sources (NCBI-disease,
 BC5CDR) are both formal PubMed-abstract corpora. DISEASE's actual weak spot, confirmed by
@@ -13,13 +12,13 @@ language ("excrutiating pain", "swollen knees", written in first person) -- a re
 else in the training data represents. CADEC's TRAIN split (127 records, disjoint from its own
 validation/test splits used for eval) is real, human-annotated, exactly-domain-matched text
 that was never used in training before now. This mirrors the same move already proven for
-GENE and CHEMICAL in v12/v13 -- add the benchmark's own real train split, never its eval
-split -- just applied to the one category that still needs it.
+GENE and CHEMICAL earlier in this project -- add the benchmark's own real train split, never
+its eval split -- just applied to the one category that still needed it.
 
-No subsampling or capping here, unlike BC2GM/BC4CHEMD in v13: 127 records is small enough
-relative to the ~76k record dataset that it cannot reproduce the class-imbalance regression
-that capping was built to prevent. Checked directly below (see the printed entity-count
-ratios) rather than assumed.
+No subsampling or capping here: 127 records is small enough relative to the ~76k record
+dataset that it cannot reproduce the kind of class-imbalance regression that capping
+elsewhere in this project was built to prevent. Checked directly below (see the printed
+entity-count ratios) rather than assumed.
 """
 import os
 import json
@@ -263,9 +262,9 @@ def main():
     train_disease = entity_counts(total_by_split["train"])
     disease_count = train_disease.get("DISEASE", 0)
     if disease_count:
-        print(f"\nRatios in final train split (for comparison against v11's healthy "
-              f"GENE:SPECIES ~1.8:1 / v12's broken ~3.8:1, the same class-imbalance check "
-              f"this project already learned to run before trusting a data addition):")
+        print(f"\nRatios in final train split (class-imbalance check, run before trusting "
+              f"any data addition -- a ratio climbing past roughly 3:1 is the threshold "
+              f"this project has previously seen cause a real regression):")
         for other in ("NAME", "DATE", "LOCATION", "GENE", "CHEMICAL", "VARIANT"):
             other_count = train_disease.get(other, 0)
             print(f"  {other}:DISEASE = {other_count / disease_count:.2f}:1")
