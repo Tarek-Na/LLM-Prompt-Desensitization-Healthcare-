@@ -1,0 +1,53 @@
+{
+  "labels": [
+    "O",
+    "B-DISEASE",
+    "I-DISEASE",
+    "B-CHEMICAL",
+    "I-CHEMICAL",
+    "B-GENE",
+    "I-GENE",
+    "B-VARIANT",
+    "I-VARIANT",
+    "B-NAME",
+    "I-NAME",
+    "B-DATE",
+    "I-DATE",
+    "B-LOCATION",
+    "I-LOCATION"
+  ],
+  "label2id": {
+    "O": 0,
+    "B-DISEASE": 1,
+    "I-DISEASE": 2,
+    "B-CHEMICAL": 3,
+    "I-CHEMICAL": 4,
+    "B-GENE": 5,
+    "I-GENE": 6,
+    "B-VARIANT": 7,
+    "I-VARIANT": 8,
+    "B-NAME": 9,
+    "I-NAME": 10,
+    "B-DATE": 11,
+    "I-DATE": 12,
+    "B-LOCATION": 13,
+    "I-LOCATION": 14
+  },
+  "id2label": {
+    "0": "O",
+    "1": "B-DISEASE",
+    "2": "I-DISEASE",
+    "3": "B-CHEMICAL",
+    "4": "I-CHEMICAL",
+    "5": "B-GENE",
+    "6": "I-GENE",
+    "7": "B-VARIANT",
+    "8": "I-VARIANT",
+    "9": "B-NAME",
+    "10": "I-NAME",
+    "11": "B-DATE",
+    "12": "I-DATE",
+    "13": "B-LOCATION",
+    "14": "I-LOCATION"
+  }
+}
