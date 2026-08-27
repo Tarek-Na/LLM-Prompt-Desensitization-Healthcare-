@@ -11,7 +11,7 @@ project found in-distribution numbers to be an unreliable predictor of real-worl
 performance in earlier iterations.
 
 Checkpoint: `r64_alpha128_lr5e-04_v16data_7cat` (LoRA config in `V16/adapter_config.json`).
-Training data: `merged_clinical_phi_v16.{train,validation,test}.jsonl`, built by
+Training data: `dataset/merged_clinical_phi_v16.{train,validation,test}.jsonl`, built by
 `dataset/build_lora_dataset_v16.py`.
 
 ## Current model (v16) — full results
@@ -49,6 +49,6 @@ rationale.
 The v15→v16 step is the one deliberate, isolated intervention: 152 added training spans (out
 of ~76k), touching only DISEASE — every other category's span count is byte-identical
 between v15 and v16 (verified directly against `merged_clinical_phi_v15.*.jsonl` vs.
-`merged_clinical_phi_v16.*.jsonl`). DISEASE relaxed recall went 48.9% (v15) to 74.5% (v16)
+`dataset/merged_clinical_phi_v16.*.jsonl`). DISEASE relaxed recall went 48.9% (v15) to 74.5% (v16)
 on the same 47 gold CADEC spans both times — Wilson intervals [35.3%, 62.8%] vs.
 [60.5%, 84.7%], non-overlapping.

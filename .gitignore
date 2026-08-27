@@ -5,19 +5,23 @@
 *
 !.gitignore
 !README.md
-
-# --- LoRA clinical PHI/NER model: train/test/raw-inference code, dataset ---
-# --- construction lineage, eval scripts, the v16 dataset + labels it was ---
-# --- last trained on, results table, and confusion matrices ---
 !LORA_RESULTS_SUMMARY.md
-!LoRa-Code-7cat.py
-!LoRa-Score.py
-!LoRa-Raw.py
-!lora_eval_bc2gm.py
-!lora_eval_bc4chemd.py
-!lora_eval_cadec.py
-!lora_eval_conll2003.py
-!lora_eval_osiris.py
+
+# --- training/: train, same-distribution test, and raw free-text inference ---
+!training/
+!training/LoRa-Code-7cat.py
+!training/LoRa-Score.py
+!training/LoRa-Raw.py
+
+# --- evaluation/: one self-contained script per real external benchmark ---
+!evaluation/
+!evaluation/lora_eval_bc2gm.py
+!evaluation/lora_eval_bc4chemd.py
+!evaluation/lora_eval_cadec.py
+!evaluation/lora_eval_conll2003.py
+!evaluation/lora_eval_osiris.py
+
+# --- dataset/: construction lineage, the v16 dataset it was last trained on, and its labels ---
 !dataset/
 !dataset/build_lora_dataset_v10.py
 !dataset/build_lora_dataset_v11.py
@@ -25,10 +29,12 @@
 !dataset/build_lora_dataset_v13.py
 !dataset/build_lora_dataset_v15.py
 !dataset/build_lora_dataset_v16.py
-!labels_v16.json
-!merged_clinical_phi_v16.train.jsonl
-!merged_clinical_phi_v16.validation.jsonl
-!merged_clinical_phi_v16.test.jsonl
+!dataset/labels_v16.json
+!dataset/merged_clinical_phi_v16.train.jsonl
+!dataset/merged_clinical_phi_v16.validation.jsonl
+!dataset/merged_clinical_phi_v16.test.jsonl
+
+# --- confusion_matrices/: one PNG per benchmark, v16 checkpoint ---
 !confusion_matrices/
 !confusion_matrices/confusion_matrix_lora_deberta_on_bc2gm.png
 !confusion_matrices/confusion_matrix_lora_deberta_on_bc4chemd.png

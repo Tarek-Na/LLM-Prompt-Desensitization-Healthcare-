@@ -25,7 +25,7 @@ small benchmarks are in **[LORA_RESULTS_SUMMARY.md](LORA_RESULTS_SUMMARY.md)**.
 
 ## Training data
 
-`merged_clinical_phi_v16.{train,validation,test}.jsonl` — built by chaining
+`dataset/merged_clinical_phi_v16.{train,validation,test}.jsonl` — built by chaining
 `dataset/build_lora_dataset_v10.py` → `v16.py`, each step documented in its own script's
 docstring. Composition of the train split by source:
 
@@ -63,33 +63,36 @@ patient-forum language — the register DISEASE mentions actually needed. See
 ## Repo layout
 
 ```
-LoRa-Code-7cat.py        training script (LoRA r=64, alpha=128, on query/value projections)
-LoRa-Score.py            same-distribution test-set scorer
-LoRa-Raw.py              live free-text inference loop
+training/
+  LoRa-Code-7cat.py       training script (LoRA r=64, alpha=128, on query/value projections)
+  LoRa-Score.py           same-distribution test-set scorer
+  LoRa-Raw.py             live free-text inference loop
 
-lora_eval_{conll2003,bc2gm,bc4chemd,cadec,osiris}.py
+evaluation/
+  lora_eval_{conll2003,bc2gm,bc4chemd,cadec,osiris}.py
                           one self-contained eval script per real external benchmark,
                           STRICT/RELAXED/COLLAPSED scoring + confusion matrix PNG
 
 dataset/
   build_lora_dataset_v10.py .. v16.py   dataset construction lineage, one script per
                                           iteration, each documenting what changed and why
+  labels_v16.json                        7-category label schema
+  merged_clinical_phi_v16.*.jsonl        the training/validation/test data itself
 
 confusion_matrices/
   confusion_matrix_lora_deberta_on_*.png   gold-type vs. predicted-type confusion matrix,
                                              one per benchmark, v16 checkpoint
 
-labels_v16.json                7-category label schema
-merged_clinical_phi_v16.*.jsonl the training/validation/test data itself
-LORA_RESULTS_SUMMARY.md        full results, ablation history, confidence intervals
+LORA_RESULTS_SUMMARY.md   full results, ablation history, confidence intervals
 ```
 
 ## Running an eval script
 
-Each `lora_eval_*.py` script is self-contained: point `BASE_MODEL_PATH` at a local copy of
-DeBERTa-v3-base and `ADAPTER_PATH` at the trained LoRA adapter, then run it. Each run scores
-the full benchmark split, prints STRICT/RELAXED/COLLAPSED per-type tables and a confusion
-matrix, and writes `confusion_matrix_lora_deberta_on_<benchmark>.png` next to the dataset.
+Each `evaluation/lora_eval_*.py` script is self-contained: point `BASE_MODEL_PATH` at a local
+copy of DeBERTa-v3-base and `ADAPTER_PATH` at the trained LoRA adapter, then run it. Each run
+scores the full benchmark split, prints STRICT/RELAXED/COLLAPSED per-type tables and a
+confusion matrix, and writes `confusion_matrix_lora_deberta_on_<benchmark>.png` next to the
+dataset.
 
 `LORA_EVAL_MAX_RECORDS` (env var) caps how many records to score, for a quick test run.
 
