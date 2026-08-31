@@ -40,18 +40,22 @@ and confidence intervals on the small benchmarks are in
 | synthetic_phi_numeric_contrast | NAME, DATE, LOCATION vs. phone/SSN/IP | 4,783 | synthetic |
 | synthetic_variant | VARIANT | 4,254 | synthetic |
 | synthetic_phi | NAME, DATE, LOCATION | 3,715 | synthetic |
-| i2b2 meds | DISEASE, CHEMICAL, DATE, NAME, LOCATION | 3,328 | real |
+| Synthetic (PHI, clinical-narrative style) | DISEASE, CHEMICAL, DATE, NAME, LOCATION | 3,328 | synthetic |
 | BC5CDR | CHEMICAL, DISEASE | 1,996 | real |
 | BioRED | GENE, CHEMICAL, DISEASE, VARIANT | 1,198 | real (multi-entity) |
 | NCBI-Disease | DISEASE | 1,044 | real |
 | (biomedical negative mining) | negatives only | 408 | real (biological-text negatives) |
 | tmVar v2 | VARIANT | 301 | real |
-| CADEC | DISEASE | 127 | real (informal patient-forum text) |
+| CADEC | DISEASE | 96 | real (informal patient-forum text) |
 
 CADEC was added specifically to fix DISEASE's remaining domain gap: its existing sources
 (BC5CDR, NCBI-Disease) are formal PubMed-abstract text, and CADEC is informal, first-person
-patient-forum language — the register DISEASE mentions actually needed. See
-`dataset/build_lora_dataset_v16.py` for the exact diff and its leakage/balance checks.
+patient-forum language — the register DISEASE mentions actually needed. The 96 records above
+are this project's training split only: CADEC's native train split is 127 records, and after
+this project's own deterministic train/validation/test partitioning, 96 landed in training,
+18 in validation, and 13 in this project's own test split (disjoint from the 22-record
+official CADEC test split used for evaluation above). See `dataset/build_lora_dataset_v16.py`
+for the exact diff and its leakage/balance checks.
 
 ## Repo layout
 
@@ -90,6 +94,12 @@ dataset.
 
 ## Known limitations
 
+- The "Synthetic (PHI, clinical-narrative style)" source (3,328 records) is treated as
+  synthetic because its provenance could not be confirmed as any specific, licensed corpus;
+  its clinical/medication narrative reads as realistic rather than clearly template-generated,
+  and a fraction of its records show a substitution artifact (the wrong token replaced during
+  synthetic value insertion, e.g. a name standing in for the sig abbreviation "Sig"). If it is
+  in fact derived from real, unattributed clinical records, its licensing status is unknown.
 - CADEC's test split is 22 records / 47 gold DISEASE spans — real signal, but read with that
   scale in mind, not the same statistical confidence as the 5,000+ record benchmarks. A
   Wilson score interval on v16's relaxed recall: 74.5% [60.5%, 84.7%].

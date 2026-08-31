@@ -39,7 +39,7 @@ Wilson score interval on relaxed recall: 74.5% [60.5%, 84.7%].
 |---|---|---|---|---|---|---|---|
 | v13 | earlier schema, baseline | 98.07% | 93.49% | 83.70% | 84.58% | 85.71% | 31.62% |
 | v15 | schema simplified to the current 7 categories | 97.80% | 93.03% | 85.33% | 85.21% | 86.46% | 25.00% |
-| v16 | + CADEC's real 127-record train split as new DISEASE data | 97.80% | 93.08% | 84.03% | 84.33% | 85.72% | **61.36%** |
+| v16 | + 96 real CADEC training records (of its 127-record native train split) as new DISEASE data | 97.80% | 93.08% | 84.03% | 84.33% | 85.72% | **61.36%** |
 
 All figures relaxed F1.
 
